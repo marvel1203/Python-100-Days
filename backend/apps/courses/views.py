@@ -112,6 +112,62 @@ class UserProgressViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
     
+    @action(detail=False, methods=['post'])
+    def update_progress(self, request):
+        """更新学习进度"""
+        lesson_id = request.data.get('lesson_id')
+        progress = request.data.get('progress_percentage', 0)
+        study_time = request.data.get('study_time', 0)
+        
+        if not lesson_id:
+            return Response(
+                {'error': '缺少lesson_id参数'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            lesson = Lesson.objects.get(id=lesson_id)
+        except Lesson.DoesNotExist:
+            return Response(
+                {'error': '课时不存在'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # 获取或创建进度记录
+        user_progress, created = UserProgress.objects.get_or_create(
+            user=request.user,
+            lesson=lesson,
+            defaults={'status': 'in_progress'}
+        )
+        
+        # 更新进度
+        user_progress.progress_percentage = progress
+        
+        # 更新学习时间(使用F表达式原子性更新)
+        UserProgress.objects.filter(pk=user_progress.pk).update(
+            study_time=F('study_time') + study_time
+        )
+        
+        # 更新状态
+        if progress >= 100:
+            user_progress.status = 'completed'
+            if not user_progress.completed_at:
+                from django.utils import timezone
+                user_progress.completed_at = timezone.now()
+        elif progress > 0:
+            user_progress.status = 'in_progress'
+            if not user_progress.started_at:
+                from django.utils import timezone
+                user_progress.started_at = timezone.now()
+        
+        user_progress.save()
+        
+        # 重新获取以获得最新的study_time值
+        user_progress.refresh_from_db()
+        
+        serializer = self.get_serializer(user_progress)
+        return Response(serializer.data)
+    
     @action(detail=False, methods=['get'])
     def statistics(self, request):
         """获取学习统计数据"""

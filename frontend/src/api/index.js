@@ -97,9 +97,17 @@ export const exerciseApi = {
     return request.get(`/exercises/exercises/${slug}/`)
   },
   
+  // 运行代码
+  runCode(data) {
+    return request.post('/exercises/exercises/run_code/', data)
+  },
+  
   // 提交代码
-  submitCode(data) {
-    return request.post('/exercises/submissions/', data)
+  submitCode(exerciseSlug, data) {
+    return request.post('/exercises/submissions/', {
+      ...data,
+      exercise: exerciseSlug
+    })
   },
   
   // 获取提交记录

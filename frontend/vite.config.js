@@ -10,10 +10,11 @@ export default defineConfig({
     },
   },
   server: {
+    host: '0.0.0.0',
     port: 9540,
     proxy: {
       '/api': {
-        target: 'http://localhost:8020',
+        target: 'http://backend:8020',  // 使用Docker容器名称
         changeOrigin: true,
       },
     },

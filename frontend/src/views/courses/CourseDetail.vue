@@ -24,7 +24,6 @@
               <el-timeline-item
                 v-for="lesson in course.lessons"
                 :key="lesson.id"
-                :timestamp="lessonDay}}"
                 placement="top"
               >
                 <el-card class="lesson-item" @click="goToLesson(lesson)">
@@ -57,7 +56,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { courseApi } from '@/api'
 import { ElMessage } from 'element-plus'
