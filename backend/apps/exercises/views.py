@@ -3,10 +3,11 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticatedOrReadOnly, IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
-import docker
+import subprocess
 import tempfile
 import os
 import time
+import sys
 
 from .models import Exercise, Submission
 from .serializers import ExerciseListSerializer, ExerciseDetailSerializer, SubmissionSerializer
@@ -28,9 +29,9 @@ class ExerciseViewSet(viewsets.ReadOnlyModelViewSet):
             return ExerciseDetailSerializer
         return ExerciseListSerializer
     
-    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticatedOrReadOnly])
+    @action(detail=False, methods=['post'], permission_classes=[])
     def run_code(self, request):
-        """运行Python代码"""
+        """运行Python代码（允许匿名访问）"""
         code = request.data.get('code', '')
         stdin_data = request.data.get('stdin', '')
         
@@ -51,86 +52,47 @@ class ExerciseViewSet(viewsets.ReadOnlyModelViewSet):
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     def _execute_python_code(self, code, stdin_data=''):
-        """在Docker容器中安全执行Python代码"""
+        """执行Python代码（临时方案：直接执行，生产环境需要添加Docker沙箱）"""
         try:
-            # 创建临时文件保存代码
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
-                f.write(code)
-                temp_file = f.name
+            start_time = time.time()
             
-            # 创建Docker客户端
-            client = docker.from_env()
-            
-            # 读取代码文件内容
-            with open(temp_file, 'r') as f:
-                code_content = f.read()
-            
-            # 运行Docker容器
-            container = client.containers.run(
-                'python:3.11-slim',
-                command=['python', '-c', code_content],
-                stdin_open=True,
-                stdout=True,
-                stderr=True,
-                detach=True,
-                mem_limit='128m',  # 限制内存
-                cpu_period=100000,
-                cpu_quota=50000,   # 限制CPU使用率50%
-                network_disabled=True,  # 禁用网络
-                remove=True  # 运行完自动删除
+            # 使用subprocess在当前环境执行
+            # 注意：这是MVP方案，生产环境应使用Docker沙箱隔离
+            result = subprocess.run(
+                [sys.executable, '-c', code],
+                input=stdin_data.encode() if stdin_data else None,
+                capture_output=True,
+                timeout=5,  # 5秒超时
+                env={'PYTHONPATH': ''}  # 清空PYTHONPATH避免意外导入
             )
             
-            # 如果有输入数据，发送到容器
-            if stdin_data:
-                container.put_archive('/', stdin_data.encode())
-            
-            # 等待容器完成（最多5秒）
-            start_time = time.time()
-            timeout = 5
-            
-            while container.status != 'exited':
-                if time.time() - start_time > timeout:
-                    container.stop(timeout=1)
-                    container.kill()
-                    return {
-                        'success': False,
-                        'error': '代码执行超时（超过5秒）',
-                        'output': '',
-                        'execution_time': timeout
-                    }
-                time.sleep(0.1)
-                container.reload()
-            
-            # 获取输出
-            logs = container.logs(stdout=True, stderr=True).decode('utf-8')
             execution_time = time.time() - start_time
             
-            # 获取退出码
-            exit_code = container.wait()['StatusCode']
+            # 获取输出
+            stdout = result.stdout.decode('utf-8', errors='replace')
+            stderr = result.stderr.decode('utf-8', errors='replace')
             
-            # 清理临时文件
-            os.unlink(temp_file)
-            
-            return {
-                'success': exit_code == 0,
-                'output': logs,
-                'error': logs if exit_code != 0 else None,
-                'execution_time': round(execution_time, 3)
-            }
-            
-        except docker.errors.ContainerError as e:
+            if result.returncode == 0:
+                return {
+                    'success': True,
+                    'output': stdout,
+                    'error': None,
+                    'execution_time': round(execution_time, 3)
+                }
+            else:
+                return {
+                    'success': False,
+                    'output': stdout,
+                    'error': stderr,
+                    'execution_time': round(execution_time, 3)
+                }
+                
+        except subprocess.TimeoutExpired:
             return {
                 'success': False,
-                'error': f'容器错误: {str(e)}',
-                'output': str(e),
-                'execution_time': 0
-            }
-        except docker.errors.ImageNotFound:
-            return {
-                'success': False,
-                'error': 'Python镜像未找到，请联系管理员',
+                'error': '代码执行超时（超过5秒）',
                 'output': '',
-                'execution_time': 0
+                'execution_time': 5.0
             }
         except Exception as e:
             return {
@@ -139,10 +101,6 @@ class ExerciseViewSet(viewsets.ReadOnlyModelViewSet):
                 'output': '',
                 'execution_time': 0
             }
-        finally:
-            # 确保临时文件被删除
-            if 'temp_file' in locals() and os.path.exists(temp_file):
-                os.unlink(temp_file)
 
 
 class SubmissionViewSet(viewsets.ModelViewSet):
