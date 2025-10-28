@@ -1,0 +1,14 @@
+<svg width="400" height="225" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="exerciseGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <rect width="400" height="225" fill="url(#exerciseGrad)"/>
+  <g transform="translate(200, 112.5)">
+    <circle cx="0" cy="0" r="40" fill="white" opacity="0.2"/>
+    <text x="0" y="0" font-family="Arial, sans-serif" font-size="48" fill="white" text-anchor="middle" dominant-baseline="middle">{ }</text>
+  </g>
+  <text x="200" y="170" font-family="Arial, sans-serif" font-size="20" fill="white" text-anchor="middle" font-weight="bold">Python 练习</text>
+</svg>

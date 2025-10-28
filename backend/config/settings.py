@@ -123,6 +123,10 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
+# 课程资源文件
+COURSE_RESOURCES_ROOT = BASE_DIR / 'course_resources'
+COURSE_RESOURCES_URL = '/course-res/'
+
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 

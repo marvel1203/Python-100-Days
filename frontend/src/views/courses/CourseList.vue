@@ -24,7 +24,7 @@
     <el-row :gutter="20" v-loading="loading">
       <el-col :span="8" v-for="course in courses" :key="course.id">
         <el-card class="course-card" @click="$router.push(`/courses/${course.slug}`)">
-          <img :src="course.cover_image || '/default-course.jpg'" class="course-cover" />
+          <img :src="course.cover_image || '/default-course.svg'" class="course-cover" />
           <div class="course-info">
             <h3>{{ course.title }}</h3>
             <p class="day-range">{{ course.day_range }}</p>

@@ -28,8 +28,14 @@ class Command(BaseCommand):
             CourseCategory.objects.all().delete()
             self.stdout.write(self.style.SUCCESS('数据已清空'))
 
-        # 项目根目录 - 在容器中Day文件夹被复制到了/data目录
-        base_dir = Path('/data')
+        # 项目根目录 - 优先使用挂载的course_resources目录
+        if Path('/app/course_resources').exists():
+            base_dir = Path('/app/course_resources')
+        elif Path('/data').exists():
+            base_dir = Path('/data')
+        else:
+            # 开发环境，使用相对于项目根目录的路径
+            base_dir = settings.BASE_DIR.parent
 
         # 定义课程分类
         categories_data = [
@@ -121,13 +127,15 @@ class Command(BaseCommand):
                 for idx, md_file in enumerate(md_files, start=1):
                     lesson_data = self._parse_markdown_file(md_file)
                     
-                    from django.utils.text import slugify
-                    lesson, created = Lesson.objects.get_or_create(
+                    # 生成全局唯一的 slug: course_slug + '-day' + day_number
+                    lesson_slug = f"{course.slug}-day{idx:02d}"
+                    
+                    lesson, created = Lesson.objects.update_or_create(
                         course=course,
                         day_number=idx,
                         defaults={
                             'title': lesson_data['title'],
-                            'slug': slugify(lesson_data['title']) + f'-{idx}',
+                            'slug': lesson_slug,
                             'content': lesson_data['content'],
                             'order': idx,
                             'estimated_time': self._estimate_duration(lesson_data['content'])
@@ -201,6 +209,11 @@ class Command(BaseCommand):
             else:
                 title = filename
             
+            # 转换图片路径: res/day01/xxx.png -> /course-res/Day01-20/res/day01/xxx.png
+            # 获取课程目录名 (例如 Day01-20)
+            course_dir = md_file.parent.name  # 从 md_file 路径获取课程目录 (Day01-20)
+            content = self._fix_image_paths(content, course_dir)
+            
             return {
                 'title': title,
                 'content': content
@@ -211,6 +224,27 @@ class Command(BaseCommand):
                 'title': md_file.stem,
                 'content': ''
             }
+    
+    def _fix_image_paths(self, content, course_dir):
+        """修复Markdown中的图片路径"""
+        # 匹配 <img src="res/..."> 和 ![](res/...)
+        # 转换为 /course-res/Day01-20/res/...
+        
+        # 处理 <img src="res/...">
+        content = re.sub(
+            r'<img\s+src="(res/[^"]+)"',
+            rf'<img src="/course-res/{course_dir}/\1"',
+            content
+        )
+        
+        # 处理 ![...](res/...)
+        content = re.sub(
+            r'!\[([^\]]*)\]\((res/[^)]+)\)',
+            rf'![\1](/course-res/{course_dir}/\2)',
+            content
+        )
+        
+        return content
 
     def _estimate_duration(self, content):
         """根据内容长度估算课时时长(分钟)"""

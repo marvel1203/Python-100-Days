@@ -21,6 +21,12 @@ const routes = [
     meta: { title: '课程详情' }
   },
   {
+    path: '/courses/:courseSlug/:lessonSlug',
+    redirect: to => {
+      return { name: 'LessonDetail', params: { slug: to.params.lessonSlug } }
+    }
+  },
+  {
     path: '/lessons/:slug',
     name: 'LessonDetail',
     component: () => import('@/views/lessons/LessonDetail.vue'),

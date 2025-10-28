@@ -38,9 +38,14 @@ urlpatterns = [
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+    # 课程资源文件
+    urlpatterns += static(settings.COURSE_RESOURCES_URL, document_root=settings.COURSE_RESOURCES_ROOT)
     
     # Debug Toolbar
     import debug_toolbar
     urlpatterns = [
         path('__debug__/', include(debug_toolbar.urls)),
     ] + urlpatterns
+else:
+    # 生产环境也需要提供课程资源
+    urlpatterns += static(settings.COURSE_RESOURCES_URL, document_root=settings.COURSE_RESOURCES_ROOT)

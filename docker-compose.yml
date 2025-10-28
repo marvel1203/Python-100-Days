@@ -41,6 +41,15 @@ services:
       - static_volume:/app/staticfiles
       - media_volume:/app/media
       - /var/run/docker.sock:/var/run/docker.sock  # 挂载Docker socket
+      - ./Day01-20:/app/course_resources/Day01-20:ro
+      - ./Day21-30:/app/course_resources/Day21-30:ro
+      - ./Day31-35:/app/course_resources/Day31-35:ro
+      - ./Day36-45:/app/course_resources/Day36-45:ro
+      - ./Day46-60:/app/course_resources/Day46-60:ro
+      - ./Day61-65:/app/course_resources/Day61-65:ro
+      - ./Day66-80:/app/course_resources/Day66-80:ro
+      - ./Day81-90:/app/course_resources/Day81-90:ro
+      - ./Day91-100:/app/course_resources/Day91-100:ro
     ports:
       - "8020:8020"
     env_file:
