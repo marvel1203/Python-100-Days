@@ -193,3 +193,73 @@ class UserNote(models.Model):
     
     def __str__(self):
         return f"{self.user.username}的笔记 - {self.lesson}"
+
+
+class AIConfig(models.Model):
+    """AI配置"""
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name='ai_config',
+        verbose_name='用户'
+    )
+    provider = models.CharField(
+        'AI服务提供商',
+        max_length=50,
+        choices=[
+            ('ollama_local', 'Ollama本地'),
+            ('ollama_remote', 'Ollama远程'),
+            ('deepseek', 'DeepSeek'),
+            ('openai', 'OpenAI'),
+        ],
+        default='ollama_local'
+    )
+    api_endpoint = models.URLField('API端点', default='http://localhost:11434')
+    api_key = models.CharField('API密钥', max_length=255, blank=True)
+    model_name = models.CharField('模型名称', max_length=100, default='llama2')
+    temperature = models.FloatField('温度参数', default=0.7)
+    max_tokens = models.IntegerField('最大tokens', default=2000)
+    is_active = models.BooleanField('是否启用', default=True)
+    created_at = models.DateTimeField('创建时间', auto_now_add=True)
+    updated_at = models.DateTimeField('更新时间', auto_now=True)
+    
+    class Meta:
+        verbose_name = 'AI配置'
+        verbose_name_plural = verbose_name
+    
+    def __str__(self):
+        return f"{self.user.username}的AI配置 - {self.provider}"
+
+
+class ChatHistory(models.Model):
+    """聊天历史"""
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='chat_history',
+        verbose_name='用户'
+    )
+    session_id = models.CharField('会话ID', max_length=100, db_index=True)
+    role = models.CharField(
+        '角色',
+        max_length=20,
+        choices=[
+            ('user', '用户'),
+            ('assistant', '助手'),
+            ('system', '系统'),
+        ]
+    )
+    content = models.TextField('消息内容')
+    context = models.JSONField('上下文信息', default=dict, blank=True)
+    created_at = models.DateTimeField('创建时间', auto_now_add=True)
+    
+    class Meta:
+        verbose_name = '聊天历史'
+        verbose_name_plural = verbose_name
+        ordering = ['created_at']
+        indexes = [
+            models.Index(fields=['user', 'session_id', 'created_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.user.username} - {self.role} - {self.created_at}"

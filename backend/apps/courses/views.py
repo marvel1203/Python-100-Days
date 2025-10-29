@@ -5,13 +5,26 @@ from rest_framework.permissions import IsAuthenticatedOrReadOnly, IsAuthenticate
 from django.core.cache import cache
 from django.db.models import F, Q
 from django_filters.rest_framework import DjangoFilterBackend
+from django.db import transaction
+import uuid
+from django.utils import timezone
+import requests
+import logging
 
-from .models import CourseCategory, Course, Lesson, UserProgress, UserNote
+from .models import (
+    CourseCategory, Course, Lesson, UserProgress, UserNote,
+    AIConfig, ChatHistory
+)
 from .serializers import (
     CourseCategorySerializer, CourseListSerializer, CourseDetailSerializer,
     LessonListSerializer, LessonDetailSerializer,
-    UserProgressSerializer, UserNoteSerializer
+    UserProgressSerializer, UserNoteSerializer,
+    AIConfigSerializer, ChatHistorySerializer, ChatMessageSerializer
 )
+from .ai_service import AIServiceFactory
+
+
+logger = logging.getLogger(__name__)
 
 
 class CourseCategoryViewSet(viewsets.ReadOnlyModelViewSet):
@@ -215,3 +228,230 @@ class UserNoteViewSet(viewsets.ModelViewSet):
         note = self.get_object()
         UserNote.objects.filter(pk=note.pk).update(like_count=F('like_count') + 1)
         return Response({'status': 'success', 'like_count': note.like_count + 1})
+
+
+class AIConfigViewSet(viewsets.ModelViewSet):
+    """AI配置视图集"""
+    serializer_class = AIConfigSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        return AIConfig.objects.filter(user=self.request.user)
+    
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        with transaction.atomic():
+            config, created = AIConfig.objects.update_or_create(
+                user=request.user,
+                defaults=serializer.validated_data
+            )
+
+        response_serializer = self.get_serializer(config)
+        status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+        headers = self.get_success_headers(response_serializer.data)
+        return Response(response_serializer.data, status=status_code, headers=headers)
+    
+    @action(detail=False, methods=['get'])
+    def current(self, request):
+        """获取当前用户的激活配置"""
+        config = AIConfig.objects.filter(user=request.user, is_active=True).first()
+        if config:
+            serializer = self.get_serializer(config)
+            return Response(serializer.data)
+        return Response({'detail': '未配置AI服务'}, status=status.HTTP_404_NOT_FOUND)
+
+    @action(detail=False, methods=['get'])
+    def models(self, request):
+        """获取可用模型列表"""
+        provider = request.query_params.get('provider')
+        api_endpoint = request.query_params.get('api_endpoint')
+
+        # 当查询参数缺失时尝试使用当前配置
+        if not provider or not api_endpoint:
+            current_config = AIConfig.objects.filter(user=request.user).first()
+            if current_config:
+                provider = provider or current_config.provider
+                api_endpoint = api_endpoint or current_config.api_endpoint
+
+        if not provider:
+            return Response({'detail': '缺少provider参数'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if provider not in ('ollama_local', 'ollama_remote'):
+            return Response({'detail': '当前仅支持同步Ollama模型'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not api_endpoint:
+            return Response({'detail': '缺少api_endpoint参数'}, status=status.HTTP_400_BAD_REQUEST)
+
+        endpoint = api_endpoint.rstrip('/')
+
+        try:
+            resp = requests.get(f'{endpoint}/api/tags', timeout=10)
+            resp.raise_for_status()
+        except requests.exceptions.RequestException as exc:
+            logger.warning('无法连接到 Ollama 服务: %s', exc)
+            fallback_models = [
+                {'name': 'qwen3:8b', 'display_name': 'qwen3:8b'},
+                {'name': 'llama3:8b', 'display_name': 'llama3:8b'},
+            ]
+            return Response(
+                {
+                    'models': fallback_models,
+                    'warning': '无法连接到 Ollama 服务，请检查服务是否已启动或更新端点配置。已提供默认模型列表以便继续配置。'
+                }
+            )
+
+        data = resp.json() if resp.content else {}
+        models = data.get('models') or data.get('data') or []
+
+        normalized = []
+        for item in models:
+            if isinstance(item, str):
+                normalized.append({'name': item, 'display_name': item})
+                continue
+
+            name = item.get('name') or item.get('model') or item.get('id')
+            if not name:
+                continue
+
+            normalized.append({
+                'name': name,
+                'display_name': item.get('display_name') or name,
+                'size': item.get('size') or item.get('size_blobs') or item.get('details', {}).get('parameter_size')
+            })
+
+        return Response({'models': normalized})
+    
+    @action(detail=True, methods=['post'])
+    def test(self, request, pk=None):
+        """测试AI配置"""
+        config = self.get_object()
+        
+        try:
+            ai_service = AIServiceFactory.create(config)
+            messages = [{'role': 'user', 'content': 'Hello'}]
+            response = ai_service.chat(messages)
+            return Response({'status': 'success', 'response': response})
+        except Exception as e:
+            return Response(
+                {'status': 'error', 'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+
+class ChatViewSet(viewsets.ViewSet):
+    """AI对话视图集"""
+    permission_classes = [IsAuthenticated]
+    
+    @action(detail=False, methods=['post'])
+    def send(self, request):
+        """发送消息"""
+        serializer = ChatMessageSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        message = serializer.validated_data['message']
+        session_id = serializer.validated_data.get('session_id') or str(uuid.uuid4())
+        extra_context = serializer.validated_data.get('extra_context', {})
+        
+        # 获取用户的AI配置
+        ai_config = AIConfig.objects.filter(user=request.user, is_active=True).first()
+        if not ai_config:
+            return Response(
+                {'error': '请先配置AI服务'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # 保存用户消息
+        ChatHistory.objects.create(
+            user=request.user,
+            session_id=session_id,
+            role='user',
+            content=message,
+            context=extra_context
+        )
+        
+        try:
+            # 获取历史对话
+            history = ChatHistory.objects.filter(
+                user=request.user,
+                session_id=session_id
+            ).order_by('created_at')[:20]  # 最近20条
+            
+            # 构建消息列表
+            messages = []
+            for msg in history:
+                messages.append({
+                    'role': msg.role,
+                    'content': msg.content
+                })
+            
+            # 调用AI服务
+            ai_service = AIServiceFactory.create(ai_config)
+            response_content = ai_service.chat(messages)
+            
+            # 保存AI响应
+            assistant_msg = ChatHistory.objects.create(
+                user=request.user,
+                session_id=session_id,
+                role='assistant',
+                content=response_content
+            )
+            
+            return Response({
+                'session_id': session_id,
+                'message': response_content,
+                'timestamp': assistant_msg.created_at
+            })
+        
+        except Exception as e:
+            return Response(
+                {'error': f'AI服务调用失败: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=False, methods=['get'])
+    def history(self, request):
+        """获取聊天历史"""
+        session_id = request.query_params.get('session_id')
+        
+        if not session_id:
+            return Response(
+                {'error': '缺少session_id参数'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        history = ChatHistory.objects.filter(
+            user=request.user,
+            session_id=session_id
+        ).order_by('created_at')
+        
+        serializer = ChatHistorySerializer(history, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def sessions(self, request):
+        """获取用户的所有会话列表"""
+        # 获取所有不同的session_id及其最新消息
+        sessions = ChatHistory.objects.filter(
+            user=request.user
+        ).values('session_id').distinct()
+        
+        session_list = []
+        for session in sessions:
+            sid = session['session_id']
+            last_msg = ChatHistory.objects.filter(
+                user=request.user,
+                session_id=sid
+            ).order_by('-created_at').first()
+            
+            if last_msg:
+                session_list.append({
+                    'session_id': sid,
+                    'last_message': last_msg.content[:50] + '...' if len(last_msg.content) > 50 else last_msg.content,
+                    'updated_at': last_msg.created_at
+                })
+        
+        # 按时间倒序
+        session_list.sort(key=lambda x: x['updated_at'], reverse=True)
+        return Response(session_list)

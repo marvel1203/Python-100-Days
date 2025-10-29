@@ -1,5 +1,8 @@
 from rest_framework import serializers
-from .models import CourseCategory, Course, Lesson, LessonResource, UserProgress, UserNote
+from .models import (
+    CourseCategory, Course, Lesson, LessonResource, UserProgress, UserNote,
+    AIConfig, ChatHistory
+)
 
 
 class CourseCategorySerializer(serializers.ModelSerializer):
@@ -118,3 +121,41 @@ class UserNoteSerializer(serializers.ModelSerializer):
             'is_public', 'like_count', 'created_at', 'updated_at'
         ]
         read_only_fields = ['user', 'like_count']
+
+
+class AIConfigSerializer(serializers.ModelSerializer):
+    """AI配置序列化器"""
+    username = serializers.CharField(source='user.username', read_only=True)
+    
+    class Meta:
+        model = AIConfig
+        fields = [
+            'id', 'username', 'provider', 'api_endpoint', 'api_key',
+            'model_name', 'temperature', 'max_tokens', 'is_active',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['user']
+        extra_kwargs = {
+            'api_key': {'write_only': True}
+        }
+
+
+class ChatHistorySerializer(serializers.ModelSerializer):
+    """聊天历史序列化器"""
+    username = serializers.CharField(source='user.username', read_only=True)
+    
+    class Meta:
+        model = ChatHistory
+        fields = [
+            'id', 'username', 'session_id', 'role', 'content',
+            'context', 'created_at'
+        ]
+        read_only_fields = ['user']
+
+
+class ChatMessageSerializer(serializers.Serializer):
+    """聊天消息序列化器"""
+    message = serializers.CharField(required=True)
+    session_id = serializers.CharField(required=False, allow_blank=True)
+    extra_context = serializers.JSONField(required=False, default=dict)
+

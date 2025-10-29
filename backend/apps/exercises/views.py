@@ -3,14 +3,11 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticatedOrReadOnly, IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
-import subprocess
-import tempfile
-import os
-import time
-import sys
+from django.db.models import F
 
 from .models import Exercise, Submission
 from .serializers import ExerciseListSerializer, ExerciseDetailSerializer, SubmissionSerializer
+from .code_executor import CodeExecutor
 
 
 class ExerciseViewSet(viewsets.ReadOnlyModelViewSet):
@@ -33,7 +30,6 @@ class ExerciseViewSet(viewsets.ReadOnlyModelViewSet):
     def run_code(self, request):
         """运行Python代码（允许匿名访问）"""
         code = request.data.get('code', '')
-        stdin_data = request.data.get('stdin', '')
         
         if not code:
             return Response({
@@ -42,65 +38,105 @@ class ExerciseViewSet(viewsets.ReadOnlyModelViewSet):
             }, status=status.HTTP_400_BAD_REQUEST)
         
         try:
-            # 使用Docker运行Python代码
-            result = self._execute_python_code(code, stdin_data)
-            return Response(result)
+            # 验证代码安全性
+            executor = CodeExecutor()
+            is_valid, error_msg = executor.validate_code(code)
+            if not is_valid:
+                return Response({
+                    'success': False,
+                    'error': f'代码安全验证失败: {error_msg}'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # 执行代码
+            result = executor.execute(code)
+            
+            return Response({
+                'success': result['status'] != 'error',
+                'output': result['output'],
+                'error': result.get('error_message'),
+                'execution_time': result['execution_time']
+            })
         except Exception as e:
             return Response({
                 'success': False,
                 'error': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
-    def _execute_python_code(self, code, stdin_data=''):
-        """执行Python代码（临时方案：直接执行，生产环境需要添加Docker沙箱）"""
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def submit(self, request, slug=None):
+        """提交练习题答案"""
+        exercise = self.get_object()
+        code = request.data.get('code', '')
+        language = request.data.get('language', 'python')
+        
+        if not code:
+            return Response(
+                {'error': '代码不能为空'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # 验证代码安全性
+        executor = CodeExecutor()
+        is_valid, error_msg = executor.validate_code(code)
+        if not is_valid:
+            return Response(
+                {'error': f'代码安全验证失败: {error_msg}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # 创建提交记录
+        submission = Submission.objects.create(
+            exercise=exercise,
+            user=request.user,
+            code=code,
+            language=language,
+            status='running'
+        )
+        
         try:
-            start_time = time.time()
+            # 执行代码并运行测试用例
+            result = executor.execute(code, exercise.test_cases)
             
-            # 使用subprocess在当前环境执行
-            # 注意：这是MVP方案，生产环境应使用Docker沙箱隔离
-            result = subprocess.run(
-                [sys.executable, '-c', code],
-                input=stdin_data.encode() if stdin_data else None,
-                capture_output=True,
-                timeout=5,  # 5秒超时
-                env={'PYTHONPATH': ''}  # 清空PYTHONPATH避免意外导入
+            # 更新提交记录
+            if result['status'] == 'passed':
+                submission.status = 'accepted'
+            elif result['status'] == 'failed':
+                submission.status = 'wrong_answer'
+            else:
+                submission.status = 'runtime_error'
+            
+            submission.result = {
+                'output': result['output'],
+                'error': result.get('error_message'),
+                'test_results': result.get('test_results', [])
+            }
+            submission.execution_time = int(result['execution_time'] * 1000)  # 转为毫秒
+            submission.memory_used = result.get('memory_usage', 0)
+            submission.save()
+            
+            # 更新练习题统计
+            Exercise.objects.filter(pk=exercise.pk).update(
+                submit_count=F('submit_count') + 1,
+                accepted_count=F('accepted_count') + (1 if submission.status == 'accepted' else 0)
             )
             
-            execution_time = time.time() - start_time
+            # 更新acceptance_rate
+            exercise.refresh_from_db()
+            if exercise.submit_count > 0:
+                exercise.acceptance_rate = round(exercise.accepted_count / exercise.submit_count * 100, 2)
+                exercise.save()
             
-            # 获取输出
-            stdout = result.stdout.decode('utf-8', errors='replace')
-            stderr = result.stderr.decode('utf-8', errors='replace')
-            
-            if result.returncode == 0:
-                return {
-                    'success': True,
-                    'output': stdout,
-                    'error': None,
-                    'execution_time': round(execution_time, 3)
-                }
-            else:
-                return {
-                    'success': False,
-                    'output': stdout,
-                    'error': stderr,
-                    'execution_time': round(execution_time, 3)
-                }
-                
-        except subprocess.TimeoutExpired:
-            return {
-                'success': False,
-                'error': '代码执行超时（超过5秒）',
-                'output': '',
-                'execution_time': 5.0
-            }
+            serializer = SubmissionSerializer(submission)
+            return Response(serializer.data)
+        
         except Exception as e:
-            return {
-                'success': False,
-                'error': f'执行错误: {str(e)}',
-                'output': '',
-                'execution_time': 0
-            }
+            submission.status = 'runtime_error'
+            submission.result = {'error': str(e)}
+            submission.save()
+            return Response(
+                {'error': f'执行失败: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 class SubmissionViewSet(viewsets.ModelViewSet):

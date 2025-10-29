@@ -5,17 +5,28 @@
         <h2>全部课程</h2>
         <el-form :inline="true" class="filter-form">
           <el-form-item label="难度">
-            <el-select v-model="filters.difficulty" placeholder="全部难度" clearable>
+            <el-select
+              v-model="filters.difficulty"
+              placeholder="全部难度"
+              clearable
+              @change="handleFilterSubmit"
+            >
               <el-option label="入门" value="beginner" />
               <el-option label="进阶" value="intermediate" />
               <el-option label="高级" value="advanced" />
             </el-select>
           </el-form-item>
           <el-form-item label="搜索">
-            <el-input v-model="filters.search" placeholder="搜索课程" clearable />
+            <el-input
+              v-model="filters.search"
+              placeholder="搜索课程"
+              clearable
+              @clear="handleSearchClear"
+              @keyup.enter="handleFilterSubmit"
+            />
           </el-form-item>
           <el-form-item>
-            <el-button type="primary" @click="loadCourses">查询</el-button>
+            <el-button type="primary" @click="handleFilterSubmit">查询</el-button>
           </el-form-item>
         </el-form>
       </el-col>
@@ -46,7 +57,7 @@
           :page-size="pageSize"
           :total="total"
           layout="prev, pager, next"
-          @current-change="loadCourses"
+          @current-change="handlePageChange"
         />
       </el-col>
     </el-row>
@@ -54,7 +65,8 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { courseApi } from '@/api'
 import { View, Star } from '@element-plus/icons-vue'
 
@@ -67,6 +79,9 @@ const filters = reactive({
   difficulty: '',
   search: '',
 })
+
+const route = useRoute()
+const router = useRouter()
 
 const getDifficultyLabel = (difficulty) => {
   const labels = {
@@ -83,12 +98,33 @@ const loadCourses = async () => {
     const params = {
       page: currentPage.value,
       page_size: pageSize.value,
-      difficulty: filters.difficulty,
-      search: filters.search,
     }
+
+    const keyword = filters.search.trim()
+    if (keyword) {
+      params.search = keyword
+    }
+    if (filters.difficulty) {
+      params.difficulty = filters.difficulty
+    }
+
     const response = await courseApi.getCourses(params)
-    courses.value = response.results
-    total.value = response.count
+    const data = response ?? {}
+
+    let items = []
+    let totalCount = 0
+
+    if (Array.isArray(data)) {
+      items = data
+      totalCount = data.length
+    } else {
+      items = data.results || data.data || []
+      const counted = data.count ?? data.total
+      totalCount = typeof counted === 'number' ? counted : items.length
+    }
+
+    courses.value = items
+    total.value = totalCount
   } catch (error) {
     console.error('加载课程失败:', error)
   } finally {
@@ -96,9 +132,108 @@ const loadCourses = async () => {
   }
 }
 
-onMounted(() => {
-  loadCourses()
-})
+const extractQueryValue = (value) => {
+  const normalized = Array.isArray(value) ? value[0] : value
+  if (normalized === undefined || normalized === null) {
+    return ''
+  }
+  return String(normalized)
+}
+
+const syncStateFromRoute = () => {
+  const query = route.query || {}
+  const routeSearch = extractQueryValue(query.search)
+  const routeDifficulty = extractQueryValue(query.difficulty)
+  const routePageRaw = extractQueryValue(query.page)
+  const page = Number(routePageRaw) || 1
+
+  if (filters.search !== routeSearch) {
+    filters.search = routeSearch
+  }
+  if (filters.difficulty !== routeDifficulty) {
+    filters.difficulty = routeDifficulty
+  }
+  if (currentPage.value !== page) {
+    currentPage.value = page
+  }
+}
+
+const normalizeQuery = (query) => {
+  const normalized = {}
+  Object.keys(query || {}).forEach((key) => {
+    const raw = Array.isArray(query[key]) ? query[key][0] : query[key]
+    if (raw !== undefined && raw !== null && raw !== '') {
+      normalized[key] = String(raw)
+    }
+  })
+  return normalized
+}
+
+const buildQueryFromState = () => {
+  const keyword = filters.search.trim()
+  const query = {}
+  if (keyword) {
+    query.search = keyword
+  }
+  if (filters.difficulty) {
+    query.difficulty = filters.difficulty
+  }
+  if (currentPage.value > 1) {
+    query.page = String(currentPage.value)
+  }
+  return query
+}
+
+const isQueryEqual = (a, b) => {
+  const keysA = Object.keys(a).sort()
+  const keysB = Object.keys(b).sort()
+  if (keysA.length !== keysB.length) {
+    return false
+  }
+  for (let i = 0; i < keysA.length; i += 1) {
+    const key = keysA[i]
+    if (a[key] !== b[key]) {
+      return false
+    }
+  }
+  return true
+}
+
+const applyFiltersToRoute = () => {
+  const nextQuery = buildQueryFromState()
+  const currentQuery = normalizeQuery(route.query)
+
+  if (isQueryEqual(currentQuery, nextQuery)) {
+    loadCourses()
+    return
+  }
+
+  router.replace({ path: route.path, query: nextQuery })
+}
+
+const handleFilterSubmit = () => {
+  currentPage.value = 1
+  applyFiltersToRoute()
+}
+
+const handleSearchClear = () => {
+  filters.search = ''
+  handleFilterSubmit()
+}
+
+const handlePageChange = (page) => {
+  currentPage.value = page
+  applyFiltersToRoute()
+}
+
+watch(
+  () => route.query,
+  () => {
+    syncStateFromRoute()
+    loadCourses()
+  },
+  { immediate: true }
+)
 </script>
 
 <style scoped>
@@ -149,6 +284,7 @@ onMounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
+  line-clamp: 2;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
 }

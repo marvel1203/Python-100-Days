@@ -75,6 +75,18 @@ class Command(BaseCommand):
                 'folders': ['Day81-90', 'Day91-100'],
                 'order': 6
             },
+            {
+                'name': '番外篇',
+                'description': 'Python编程经验分享、最佳实践、工具使用等扩展内容',
+                'folders': ['番外篇'],
+                'order': 7
+            },
+            {
+                'name': '公开课',
+                'description': 'Python技术公开课、算法入门、项目实战等精选内容',
+                'folders': ['公开课'],
+                'order': 8
+            },
         ]
 
         total_courses = 0
@@ -101,6 +113,16 @@ class Command(BaseCommand):
                 folder_path = base_dir / folder
                 if not folder_path.exists():
                     self.stdout.write(self.style.WARNING(f'  文件夹不存在: {folder}'))
+                    continue
+
+                # 特殊处理：公开课包含子文件夹
+                if folder == '公开课':
+                    self._process_public_course_folder(folder_path, category)
+                    continue
+                
+                # 特殊处理：番外篇是直接的 Markdown 文件
+                if folder == '番外篇':
+                    self._process_extra_folder(folder_path, category)
                     continue
 
                 # 创建课程(每个文件夹一个课程)
@@ -162,6 +184,8 @@ class Command(BaseCommand):
             'Day66-80': 'Python数据分析',
             'Day81-90': 'Python项目实战(一)',
             'Day91-100': 'Python项目实战(二)',
+            '番外篇': 'Python编程番外篇',
+            '公开课': 'Python技术公开课',
         }
         return mapping.get(folder, folder)
 
@@ -177,6 +201,8 @@ class Command(BaseCommand):
             'Day66-80': '学习NumPy、Pandas等数据分析工具,掌握数据处理和可视化技能',
             'Day81-90': '通过实战项目巩固所学知识,提升综合开发能力',
             'Day91-100': '更多实战项目,培养解决实际问题的能力',
+            '番外篇': 'Python编程经验分享、PEP8规范、容器技巧、反爬策略、pandas使用等扩展知识',
+            '公开课': '算法入门、好玩的Python、高级编程技巧等精选公开课内容',
         }
         return mapping.get(folder, f'{folder}课程内容')
 
@@ -186,11 +212,17 @@ class Command(BaseCommand):
             return 'beginner'
         elif folder.startswith('Day31') or folder.startswith('Day36') or folder.startswith('Day46'):
             return 'intermediate'
+        elif folder in ['番外篇', '公开课']:
+            return 'all'  # 适合所有水平
         else:
             return 'advanced'
 
     def _extract_day_number(self, folder):
         """从文件夹名提取起始天数作为排序依据"""
+        if folder == '番外篇':
+            return 200  # 排在最后
+        elif folder == '公开课':
+            return 201
         match = re.search(r'Day(\d+)', folder)
         return int(match.group(1)) if match else 0
 
@@ -252,3 +284,92 @@ class Command(BaseCommand):
         char_count = len(content)
         duration = max(5, min(120, char_count // 100))  # 5-120分钟
         return duration
+
+    def _process_extra_folder(self, folder_path, category):
+        """处理番外篇文件夹 - 直接包含 Markdown 文件"""
+        self.stdout.write(f'  处理番外篇...')
+        
+        # 创建番外篇课程
+        course, created = Course.objects.get_or_create(
+            title=self._get_course_name('番外篇'),
+            category=category,
+            defaults={
+                'description': self._get_course_description('番外篇'),
+                'slug': 'fanwaipian',
+                'difficulty': 'all',
+                'day_range': '番外篇',
+                'order': 200
+            }
+        )
+        
+        if created:
+            self.stdout.write(self.style.SUCCESS(f'    创建课程: {course.title}'))
+        
+        # 导入所有 Markdown 文件
+        md_files = sorted(folder_path.glob('*.md'))
+        for idx, md_file in enumerate(md_files, start=1):
+            lesson_data = self._parse_markdown_file(md_file)
+            lesson_slug = f"fanwaipian-{idx:02d}"
+            
+            lesson, created = Lesson.objects.update_or_create(
+                course=course,
+                day_number=idx,
+                defaults={
+                    'title': lesson_data['title'],
+                    'slug': lesson_slug,
+                    'content': lesson_data['content'],
+                    'order': idx,
+                    'estimated_time': self._estimate_duration(lesson_data['content'])
+                }
+            )
+            
+            if created:
+                self.stdout.write(f'      - 课时 {idx}: {lesson.title}')
+
+    def _process_public_course_folder(self, folder_path, category):
+        """处理公开课文件夹 - 包含多个子文件夹"""
+        self.stdout.write(f'  处理公开课...')
+        
+        # 获取所有子文件夹
+        sub_folders = sorted([f for f in folder_path.iterdir() if f.is_dir()])
+        
+        for sub_idx, sub_folder in enumerate(sub_folders, start=1):
+            # 每个子文件夹创建一个课程
+            course_name = sub_folder.name
+            course_slug = f"gongkaike-{sub_idx:02d}"
+            
+            course, created = Course.objects.get_or_create(
+                title=course_name,
+                category=category,
+                defaults={
+                    'description': f'{course_name} - 精选公开课内容',
+                    'slug': course_slug,
+                    'difficulty': 'all',
+                    'day_range': '公开课',
+                    'order': 201 + sub_idx
+                }
+            )
+            
+            if created:
+                self.stdout.write(self.style.SUCCESS(f'    创建课程: {course.title}'))
+            
+            # 导入该子文件夹中的所有 Markdown 文件
+            md_files = sorted(sub_folder.glob('*.md'))
+            for idx, md_file in enumerate(md_files, start=1):
+                lesson_data = self._parse_markdown_file(md_file)
+                lesson_slug = f"{course_slug}-lesson{idx:02d}"
+                
+                lesson, created = Lesson.objects.update_or_create(
+                    course=course,
+                    day_number=idx,
+                    defaults={
+                        'title': lesson_data['title'],
+                        'slug': lesson_slug,
+                        'content': lesson_data['content'],
+                        'order': idx,
+                        'estimated_time': self._estimate_duration(lesson_data['content'])
+                    }
+                )
+                
+                if created:
+                    self.stdout.write(f'        - 课时 {idx}: {lesson.title}')

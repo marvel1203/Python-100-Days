@@ -1,13 +1,15 @@
 from rest_framework import viewsets, status, generics
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.permissions import IsAuthenticated, AllowAny, IsAdminUser
 from rest_framework_simplejwt.views import TokenObtainPairView
 from django.contrib.auth.models import User
+from django.db.models import Q
 
 from .serializers import (
     UserSerializer, UserRegisterSerializer,
-    CustomTokenObtainPairSerializer, UserProfileSerializer
+    CustomTokenObtainPairSerializer, UserProfileSerializer,
+    UserAdminSerializer
 )
 
 
@@ -90,6 +92,55 @@ class UserViewSet(viewsets.ModelViewSet):
         user.save()
         
         return Response({'message': '密码修改成功'})
+
+
+class UserAdminViewSet(viewsets.ModelViewSet):
+    """管理员用户管理视图集 - 仅超级管理员可访问"""
+    queryset = User.objects.all()
+    serializer_class = UserAdminSerializer
+    permission_classes = [IsAdminUser]  # 仅管理员可访问
+    
+    def get_queryset(self):
+        # 支持搜索和过滤
+        queryset = User.objects.all().order_by('-date_joined')
+        
+        # 搜索用户名或邮箱
+        search = self.request.query_params.get('search', None)
+        if search:
+            queryset = queryset.filter(
+                Q(username__icontains=search) | 
+                Q(email__icontains=search)
+            )
+        
+        # 按角色过滤
+        is_staff = self.request.query_params.get('is_staff', None)
+        if is_staff is not None:
+            queryset = queryset.filter(is_staff=is_staff.lower() == 'true')
+        
+        return queryset
+    
+    @action(detail=True, methods=['post'])
+    def toggle_active(self, request, pk=None):
+        """切换用户激活状态"""
+        user = self.get_object()
+        user.is_active = not user.is_active
+        user.save()
+        return Response({
+            'message': f'用户已{"激活" if user.is_active else "禁用"}',
+            'is_active': user.is_active
+        })
+    
+    @action(detail=True, methods=['post'])
+    def reset_password(self, request, pk=None):
+        """重置用户密码"""
+        user = self.get_object()
+        new_password = request.data.get('password', 'password123')
+        user.set_password(new_password)
+        user.save()
+        return Response({
+            'message': '密码已重置',
+            'new_password': new_password
+        })
 
 
 @api_view(['GET'])

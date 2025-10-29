@@ -4,11 +4,13 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 from .views import (
     UserViewSet, UserRegisterView,
-    CustomTokenObtainPairView, user_stats
+    CustomTokenObtainPairView, user_stats,
+    UserAdminViewSet
 )
 
 router = DefaultRouter()
 router.register('users', UserViewSet)
+router.register('manage', UserAdminViewSet, basename='user-manage')
 
 urlpatterns = [
     # JWT认证

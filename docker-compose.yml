@@ -50,6 +50,8 @@ services:
       - ./Day66-80:/app/course_resources/Day66-80:ro
       - ./Day81-90:/app/course_resources/Day81-90:ro
       - ./Day91-100:/app/course_resources/Day91-100:ro
+      - ./番外篇:/app/course_resources/番外篇:ro
+      - ./公开课:/app/course_resources/公开课:ro
     ports:
       - "8020:8020"
     env_file:

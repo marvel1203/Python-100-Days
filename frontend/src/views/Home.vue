@@ -26,7 +26,7 @@
               <span>系统化课程</span>
             </div>
           </template>
-          <p>100天完整学习路径,涵盖Python基础、进阶到项目实战</p>
+          <p>100天涵盖Python基础、进阶到项目实战</p>
         </el-card>
       </el-col>
       <el-col :span="8">

@@ -1,5 +1,8 @@
 from django.contrib import admin
-from .models import CourseCategory, Course, Lesson, LessonResource, UserProgress, UserNote
+from .models import (
+    CourseCategory, Course, Lesson, LessonResource, UserProgress, UserNote,
+    AIConfig, ChatHistory
+)
 
 
 @admin.register(CourseCategory)
@@ -48,3 +51,18 @@ class UserNoteAdmin(admin.ModelAdmin):
     list_display = ['user', 'lesson', 'is_public', 'like_count', 'created_at']
     list_filter = ['is_public']
     search_fields = ['user__username', 'content']
+
+
+@admin.register(AIConfig)
+class AIConfigAdmin(admin.ModelAdmin):
+    list_display = ['user', 'provider', 'model_name', 'is_active', 'created_at']
+    list_filter = ['provider', 'is_active']
+    search_fields = ['user__username']
+
+
+@admin.register(ChatHistory)
+class ChatHistoryAdmin(admin.ModelAdmin):
+    list_display = ['user', 'session_id', 'role', 'created_at']
+    list_filter = ['role']
+    search_fields = ['user__username', 'session_id', 'content']
+    readonly_fields = ['created_at']

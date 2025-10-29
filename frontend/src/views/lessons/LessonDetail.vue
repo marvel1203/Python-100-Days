@@ -16,13 +16,25 @@
 
       <el-row :gutter="20">
         <el-col :span="18">
+          <div class="search-bar">
+            <el-input
+              v-model="searchTerm"
+              placeholder="搜索课文内容或课程资源"
+              clearable
+              @clear="onSearchCleared"
+            >
+              <template #prefix>
+                <el-icon><Search /></el-icon>
+              </template>
+            </el-input>
+          </div>
           <div class="lesson-content">
             <MarkdownViewer :content="lesson.content" />
           </div>
 
           <div class="lesson-resources" v-if="lesson.resources && lesson.resources.length > 0">
             <h3>课程资源</h3>
-            <el-table :data="lesson.resources">
+            <el-table v-if="filteredResources.length" :data="filteredResources">
               <el-table-column prop="title" label="资源名称" />
               <el-table-column prop="file_type" label="类型" width="100" />
               <el-table-column label="操作" width="120">
@@ -33,11 +45,34 @@
                 </template>
               </el-table-column>
             </el-table>
+            <el-empty v-else description="没有匹配的资源" />
+          </div>
+
+          <div class="search-results" v-if="searchTerm">
+            <h3>搜索结果</h3>
+            <el-empty v-if="!matchingSnippets.length" description="未找到匹配内容" />
+            <el-timeline v-else>
+              <el-timeline-item
+                v-for="item in matchingSnippets"
+                :key="item.line"
+                :timestamp="'第 ' + item.line + ' 行'"
+              >
+                <p class="snippet" v-html="highlightSnippet(item.snippet)"></p>
+              </el-timeline-item>
+            </el-timeline>
+          </div>
+
+          <div class="github-link" v-if="githubLink">
+            <el-divider />
+            <el-button type="success" plain @click="openGithubLink" style="width: 100%">
+              <el-icon><Link /></el-icon>
+              GitHub 原文
+            </el-button>
           </div>
         </el-col>
 
-        <el-col :span="6">
-          <el-card class="sidebar-card">
+        <el-col :span="6" class="info-column">
+          <el-card class="sidebar-card floating-card">
             <h3>学习信息</h3>
             <el-descriptions :column="1" border>
               <el-descriptions-item label="预计时长">
@@ -73,16 +108,17 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { courseApi, progressApi } from '@/api'
 import { ElMessage } from 'element-plus'
-import { Star, Link } from '@element-plus/icons-vue'
+import { Star, Link, Search } from '@element-plus/icons-vue'
 import MarkdownViewer from '@/components/MarkdownViewer.vue'
 
 const route = useRoute()
 const lesson = ref(null)
 const loading = ref(false)
+const searchTerm = ref('')
 
 const loadLesson = async () => {
   loading.value = true
@@ -122,6 +158,106 @@ const openCodeUrl = () => {
   window.open(lesson.value.code_url, '_blank')
 }
 
+const filteredResources = computed(() => {
+  if (!lesson.value?.resources) {
+    return []
+  }
+
+  const keyword = searchTerm.value.trim().toLowerCase()
+  if (!keyword) {
+    return lesson.value.resources
+  }
+
+  return lesson.value.resources.filter((resource) => {
+    const title = resource.title?.toLowerCase() || ''
+    const type = resource.file_type?.toLowerCase() || ''
+    return title.includes(keyword) || type.includes(keyword)
+  })
+})
+
+const matchingSnippets = computed(() => {
+  const keyword = searchTerm.value.trim().toLowerCase()
+  if (!keyword || !lesson.value?.content) {
+    return []
+  }
+
+  const lines = lesson.value.content.split('\n')
+  const results = []
+
+  lines.forEach((line, index) => {
+    const plain = line.trim()
+    if (!plain) {
+      return
+    }
+    const lower = plain.toLowerCase()
+    const position = lower.indexOf(keyword)
+    if (position !== -1) {
+      const start = Math.max(0, position - 40)
+      const end = Math.min(plain.length, position + keyword.length + 40)
+      const snippet = plain.slice(start, end)
+      results.push({
+        line: index + 1,
+        snippet: `${start > 0 ? '…' : ''}${snippet}${end < plain.length ? '…' : ''}`,
+      })
+    }
+  })
+
+  return results.slice(0, 6)
+})
+
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+const highlightSnippet = (snippet) => {
+  const keyword = searchTerm.value.trim()
+  if (!keyword) {
+    return snippet
+  }
+  const pattern = new RegExp(escapeRegExp(keyword), 'gi')
+  return snippet.replace(pattern, (match) => `<mark>${match}</mark>`)
+}
+
+const onSearchCleared = () => {
+  searchTerm.value = ''
+}
+
+const githubLink = computed(() => {
+  if (!lesson.value) {
+    return ''
+  }
+
+  const courseTitle = lesson.value.course_title || ''
+  const courseSlug = lesson.value.course_slug || ''
+  const courseMatch = courseTitle.match(/Day\d{2}-\d{2}/)
+  let courseSegment = courseMatch ? courseMatch[0] : ''
+
+  if (!courseSegment && courseSlug) {
+    const slugMatch = courseSlug.match(/day\d{2}-\d{2}/i)
+    if (slugMatch) {
+      courseSegment = slugMatch[0].replace(/^./, (char) => char.toUpperCase())
+    }
+  }
+
+  if (!courseSegment) {
+    return ''
+  }
+
+  const title = (lesson.value.title || '').trim()
+  if (!title) {
+    return ''
+  }
+
+  const fileName = `${String(lesson.value.day_number).padStart(2, '0')}.${title.replace(/[\\/]/g, '-')}.md`
+  const encodePath = (value) => encodeURIComponent(value).replace(/%2F/g, '/')
+  const baseUrl = 'https://github.com/marvel1203/Python-100-Days/blob/master'
+  return `${baseUrl}/${encodePath(courseSegment)}/${encodePath(fileName)}`
+})
+
+const openGithubLink = () => {
+  if (githubLink.value) {
+    window.open(githubLink.value, '_blank')
+  }
+}
+
 onMounted(() => {
   loadLesson()
 })
@@ -140,7 +276,75 @@ onMounted(() => {
   margin-top: 30px;
 }
 
+.search-bar {
+  margin-bottom: 20px;
+}
+
+.search-results {
+  margin-top: 30px;
+}
+
+.snippet {
+  margin: 0;
+  line-height: 1.6;
+  color: #334155;
+}
+
+.github-link {
+  margin-top: 32px;
+}
+
+mark {
+  background-color: #fde68a;
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
 .sidebar-card h3 {
   margin-top: 0;
+}
+</style>
+
+<style scoped>
+.info-column {
+  position: sticky;
+  top: 110px;
+  align-self: flex-start;
+}
+
+.floating-card {
+  border: none;
+  border-radius: 20px;
+  box-shadow: 0 20px 45px rgba(15, 23, 42, 0.12);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.92));
+  backdrop-filter: blur(14px);
+  position: relative;
+  overflow: hidden;
+}
+
+.floating-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 110% -10%, rgba(56, 189, 248, 0.18), transparent 55%);
+  pointer-events: none;
+}
+
+.floating-card h3 {
+  margin-top: 0;
+}
+
+@media screen and (max-width: 1200px) {
+  .info-column {
+    position: static;
+    margin-top: 24px;
+  }
+}
+
+@media screen and (max-width: 992px) {
+  .floating-card {
+    box-shadow: none;
+    backdrop-filter: none;
+  }
 }
 </style>

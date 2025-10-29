@@ -17,6 +17,10 @@ export default defineConfig({
         target: 'http://backend:8020',  // 使用Docker容器名称
         changeOrigin: true,
       },
+      '/course-res': {
+        target: 'http://backend:8020',  // 课程资源文件代理到后端
+        changeOrigin: true,
+      },
     },
   },
 })

@@ -57,6 +57,12 @@ const routes = [
     meta: { title: '我的笔记', requiresAuth: true }
   },
   {
+    path: '/settings/ai',
+    name: 'AISettings',
+    component: () => import('@/views/user/AISettings.vue'),
+    meta: { title: 'AI助手配置', requiresAuth: true }
+  },
+  {
     path: '/login',
     name: 'Login',
     component: () => import('@/views/auth/Login.vue'),
@@ -67,6 +73,18 @@ const routes = [
     name: 'Register',
     component: () => import('@/views/auth/Register.vue'),
     meta: { title: '注册' }
+  },
+  {
+    path: '/admin',
+    name: 'Admin',
+    redirect: '/admin/users',
+    meta: { requiresAuth: true, requiresAdmin: true }
+  },
+  {
+    path: '/admin/users',
+    name: 'UserManagement',
+    component: () => import('@/views/admin/UserManagement.vue'),
+    meta: { title: '用户管理', requiresAuth: true, requiresAdmin: true }
   },
 ]
 
@@ -80,11 +98,20 @@ router.beforeEach((to, from, next) => {
   document.title = `${to.meta.title} - Python-100天从新手到大师`
   
   const userStore = useUserStore()
+  
+  // 检查是否需要登录
   if (to.meta.requiresAuth && !userStore.isLoggedIn) {
     next({ name: 'Login', query: { redirect: to.fullPath } })
-  } else {
-    next()
+    return
   }
+  
+  // 检查是否需要管理员权限
+  if (to.meta.requiresAdmin && !userStore.isAdmin) {
+    next({ name: 'Home' })
+    return
+  }
+  
+  next()
 })
 
 export default router
