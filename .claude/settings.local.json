@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(lsof:*)",
+      "Bash(python:*)",
+      "Bash(docker-compose exec:*)",
+      "Bash(docker-compose build:*)",
+      "Bash(docker-compose restart:*)",
+      "Bash(docker cp:*)",
+      "Bash(docker-compose ps:*)",
+      "Bash(curl:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

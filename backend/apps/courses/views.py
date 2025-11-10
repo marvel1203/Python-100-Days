@@ -288,38 +288,80 @@ class AIConfigViewSet(viewsets.ModelViewSet):
         resolved_endpoint = endpoint
         warning_message = None
 
+        # 检测Docker环境并自动修复端点
+        def fix_docker_endpoint(original_endpoint):
+            """修复Docker环境下的端点"""
+            import os
+            in_docker = os.path.exists('/.dockerenv') or \
+                       os.environ.get('DOCKER_CONTAINER', 'false').lower() == 'true'
+
+            if in_docker:
+                localhost_variants = (
+                    'http://localhost', 'https://localhost',
+                    'http://127.0.0.1', 'https://127.0.0.1'
+                )
+                for variant in localhost_variants:
+                    if original_endpoint.startswith(variant):
+                        protocol = variant.split('://')[0]
+                        fixed_endpoint = original_endpoint.replace(
+                            variant, f'{protocol}://host.docker.internal', 1
+                        )
+                        return fixed_endpoint, True
+            return original_endpoint, False
+
+        # 优先尝试修复后的Docker端点
+        docker_endpoint, is_docker_fixed = fix_docker_endpoint(endpoint)
+        if is_docker_fixed:
+            resolved_endpoint = docker_endpoint
+            # 记录Docker环境自动修复
+            logger.info('检测到Docker环境，自动将Ollama端点从 %s 修正为 %s', endpoint, docker_endpoint)
+
         def fetch_tags(target_endpoint):
             response = requests.get(f'{target_endpoint}/api/tags', timeout=10)
             response.raise_for_status()
             return response
 
         try:
-            resp = fetch_tags(endpoint)
+            resp = fetch_tags(resolved_endpoint)
         except requests.exceptions.RequestException as exc:
-            logger.warning('无法连接到 Ollama 服务 (%s): %s', endpoint, exc)
-            alternate_endpoint = None
+            logger.warning('无法连接到 Ollama 服务 (%s): %s', resolved_endpoint, exc)
 
-            localhost_variants = (
-                'http://localhost', 'https://localhost',
-                'http://127.0.0.1', 'https://127.0.0.1'
-            )
-            for prefix in localhost_variants:
-                if endpoint.startswith(prefix):
-                    alternate_endpoint = endpoint.replace(prefix, f'{prefix.split(":")[0]}://host.docker.internal', 1)
-                    break
-
-            if alternate_endpoint:
+            # 如果Docker端点失败，尝试原始端点
+            if is_docker_fixed and resolved_endpoint != endpoint:
                 try:
-                    alternate_endpoint = alternate_endpoint.rstrip('/')
-                    resp = fetch_tags(alternate_endpoint)
-                    resolved_endpoint = alternate_endpoint
-                    warning_message = (
-                        '检测到当前后端运行在容器环境，已临时改用 host.docker.internal 访问 Ollama。'
-                        f' 建议将端点更新为 {resolved_endpoint} 以提升稳定性。'
-                    )
-                except requests.exceptions.RequestException as alt_exc:
-                    logger.warning('备用端点访问 Ollama 仍然失败 (%s): %s', alternate_endpoint, alt_exc)
+                    resp = fetch_tags(endpoint)
+                    resolved_endpoint = endpoint
+                    warning_message = 'Docker端点访问失败，已回退使用原始端点。建议检查Ollama服务是否运行在宿主机上。'
+                except requests.exceptions.RequestException as orig_exc:
+                    logger.warning('原始端点访问 Ollama 也失败 (%s): %s', endpoint, orig_exc)
                     resp = None
+            else:
+                resp = None
+
+            # 如果都失败了，尝试备用端点逻辑
+            if resp is None and not is_docker_fixed:
+                alternate_endpoint = None
+                localhost_variants = (
+                    'http://localhost', 'https://localhost',
+                    'http://127.0.0.1', 'https://127.0.0.1'
+                )
+                for prefix in localhost_variants:
+                    if endpoint.startswith(prefix):
+                        alternate_endpoint = endpoint.replace(prefix, f'{prefix.split(":")[0]}://host.docker.internal', 1)
+                        break
+
+                if alternate_endpoint:
+                    try:
+                        alternate_endpoint = alternate_endpoint.rstrip('/')
+                        resp = fetch_tags(alternate_endpoint)
+                        resolved_endpoint = alternate_endpoint
+                        warning_message = (
+                            '检测到当前后端运行在容器环境，已临时改用 host.docker.internal 访问 Ollama。'
+                            f' 建议将端点更新为 {resolved_endpoint} 以提升稳定性。'
+                        )
+                    except requests.exceptions.RequestException as alt_exc:
+                        logger.warning('备用端点访问 Ollama 仍然失败 (%s): %s', alternate_endpoint, alt_exc)
+                        resp = None
 
             if resp is None:
                 fallback_models = [
@@ -332,7 +374,7 @@ class AIConfigViewSet(viewsets.ModelViewSet):
                         'warning': '无法连接到 Ollama 服务，请检查服务是否已启动或更新端点配置。已提供默认模型列表以便继续配置。',
                         'error': str(exc),
                         'attempted_endpoint': endpoint,
-                        'alternate_attempted': alternate_endpoint,
+                        'resolved_endpoint': resolved_endpoint,
                     },
                     status=status.HTTP_200_OK
                 )

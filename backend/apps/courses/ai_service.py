@@ -4,6 +4,8 @@ AI服务集成
 """
 import requests
 import json
+import socket
+import os
 from typing import List, Dict, Optional
 
 
@@ -20,7 +22,42 @@ class AIService:
 
 class OllamaService(AIService):
     """Ollama服务"""
-    
+
+    def __init__(self, config):
+        super().__init__(config)
+        # 自动检测并修复Docker环境下的Ollama连接问题
+        self.config.api_endpoint = self._fix_ollama_endpoint(config.api_endpoint)
+
+    def _fix_ollama_endpoint(self, endpoint):
+        """
+        修复Docker环境下的Ollama端点
+        在Docker容器中，localhost需要替换为host.docker.internal
+        """
+        if not endpoint:
+            return endpoint
+
+        # 检查是否在Docker容器中运行
+        in_docker = os.path.exists('/.dockerenv') or \
+                   os.environ.get('DOCKER_CONTAINER', 'false').lower() == 'true'
+
+        if in_docker:
+            # Docker环境下，将localhost替换为host.docker.internal
+            localhost_variants = [
+                'http://localhost',
+                'https://localhost',
+                'http://127.0.0.1',
+                'https://127.0.0.1'
+            ]
+
+            for variant in localhost_variants:
+                if endpoint.startswith(variant):
+                    # 替换为host.docker.internal，保持协议和端口
+                    protocol = variant.split('://')[0]
+                    new_endpoint = endpoint.replace(variant, f'{protocol}://host.docker.internal', 1)
+                    return new_endpoint
+
+        return endpoint
+
     def chat(self, messages: List[Dict], **kwargs) -> str:
         """
         调用Ollama API

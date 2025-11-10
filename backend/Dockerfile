@@ -6,7 +6,8 @@ WORKDIR /app
 # 设置环境变量
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    DOCKER_CONTAINER=true
 
 # 安装系统依赖
 RUN apt-get update && apt-get install -y \

@@ -58,11 +58,12 @@
 
 <script setup>
 import { ref, reactive } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 
 const router = useRouter()
+const route = useRoute()
 const userStore = useUserStore()
 
 const loginFormRef = ref()
@@ -85,15 +86,24 @@ const rules = {
 
 const handleLogin = async () => {
   if (!loginFormRef.value) return
-  
+
   await loginFormRef.value.validate(async (valid) => {
     if (!valid) return
-    
+
     loading.value = true
     try {
       await userStore.login(loginForm)
       ElMessage.success('登录成功')
-      router.push('/')
+
+      // 处理登录成功后的跳转逻辑
+      const redirect = route.query.redirect
+      if (redirect) {
+        // 如果有重定向参数，跳转到原始页面
+        router.push(redirect)
+      } else {
+        // 否则跳转到首页
+        router.push('/')
+      }
     } catch (error) {
       ElMessage.error(error.message || '登录失败，请检查用户名和密码')
     } finally {
