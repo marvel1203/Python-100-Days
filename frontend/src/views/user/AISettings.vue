@@ -302,6 +302,8 @@ const fetchAvailableModels = async ({ preferExisting = true, silent = false } = 
     const res = await axios.get('/api/courses/ai-config/models/', { params })
     const rawItems = res.data?.models || []
     const warningMessage = res.data?.warning
+    const resolvedEndpoint = res.data?.resolved_endpoint
+    const autoSwitched = Boolean(res.data?.auto_switched)
     const items = rawItems.map((item) =>
       typeof item === 'string'
         ? { name: item, display_name: item }
@@ -312,6 +314,10 @@ const fetchAvailableModels = async ({ preferExisting = true, silent = false } = 
 
     const currentName = form.value.model_name
     const preferred = items.find((item) => item.name === currentName)
+
+    if (autoSwitched && resolvedEndpoint && resolvedEndpoint !== form.value.api_endpoint) {
+      form.value.api_endpoint = resolvedEndpoint
+    }
 
     if (!preferred || !preferExisting) {
       const defaultPick = items.find((item) => item.name === 'qwen3:8b') || items[0]
@@ -334,9 +340,19 @@ const fetchAvailableModels = async ({ preferExisting = true, silent = false } = 
 
     if (!silent && warningMessage) {
       pushDiagnostic({
-        title: '使用默认模型列表',
-        message: `${warningMessage} (共 ${items.length} 个默认选项)`,
-        status: 'warning'
+        title: autoSwitched ? '已完成端点切换' : '使用默认模型列表',
+        message: autoSwitched
+          ? `${warningMessage}`
+          : `${warningMessage} (共 ${items.length} 个默认选项)`,
+        status: autoSwitched ? 'success' : 'warning'
+      })
+    }
+
+    if (!silent && resolvedEndpoint && resolvedEndpoint !== params.api_endpoint && !autoSwitched) {
+      pushDiagnostic({
+        title: '检测到可用端点',
+        message: `推荐将端点调整为 ${resolvedEndpoint}。`,
+        status: 'info'
       })
     }
   } catch (error) {

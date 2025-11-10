@@ -26,10 +26,6 @@
         <el-icon><Notebook /></el-icon>
         <span>我的笔记</span>
       </el-menu-item>
-      <el-menu-item index="/settings/ai" v-if="userStore.isLoggedIn">
-        <el-icon><ChatDotRound /></el-icon>
-        <span>AI助手配置</span>
-      </el-menu-item>
     </el-menu>
   </aside>
 </template>
@@ -38,7 +34,7 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
-import { Document, EditPen, TrendCharts, Notebook, ChatDotRound } from '@element-plus/icons-vue'
+import { Document, EditPen, TrendCharts, Notebook } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()

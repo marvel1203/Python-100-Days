@@ -285,22 +285,57 @@ class AIConfigViewSet(viewsets.ModelViewSet):
             return Response({'detail': '缺少api_endpoint参数'}, status=status.HTTP_400_BAD_REQUEST)
 
         endpoint = api_endpoint.rstrip('/')
+        resolved_endpoint = endpoint
+        warning_message = None
+
+        def fetch_tags(target_endpoint):
+            response = requests.get(f'{target_endpoint}/api/tags', timeout=10)
+            response.raise_for_status()
+            return response
 
         try:
-            resp = requests.get(f'{endpoint}/api/tags', timeout=10)
-            resp.raise_for_status()
+            resp = fetch_tags(endpoint)
         except requests.exceptions.RequestException as exc:
-            logger.warning('无法连接到 Ollama 服务: %s', exc)
-            fallback_models = [
-                {'name': 'qwen3:8b', 'display_name': 'qwen3:8b'},
-                {'name': 'llama3:8b', 'display_name': 'llama3:8b'},
-            ]
-            return Response(
-                {
-                    'models': fallback_models,
-                    'warning': '无法连接到 Ollama 服务，请检查服务是否已启动或更新端点配置。已提供默认模型列表以便继续配置。'
-                }
+            logger.warning('无法连接到 Ollama 服务 (%s): %s', endpoint, exc)
+            alternate_endpoint = None
+
+            localhost_variants = (
+                'http://localhost', 'https://localhost',
+                'http://127.0.0.1', 'https://127.0.0.1'
             )
+            for prefix in localhost_variants:
+                if endpoint.startswith(prefix):
+                    alternate_endpoint = endpoint.replace(prefix, f'{prefix.split(":")[0]}://host.docker.internal', 1)
+                    break
+
+            if alternate_endpoint:
+                try:
+                    alternate_endpoint = alternate_endpoint.rstrip('/')
+                    resp = fetch_tags(alternate_endpoint)
+                    resolved_endpoint = alternate_endpoint
+                    warning_message = (
+                        '检测到当前后端运行在容器环境，已临时改用 host.docker.internal 访问 Ollama。'
+                        f' 建议将端点更新为 {resolved_endpoint} 以提升稳定性。'
+                    )
+                except requests.exceptions.RequestException as alt_exc:
+                    logger.warning('备用端点访问 Ollama 仍然失败 (%s): %s', alternate_endpoint, alt_exc)
+                    resp = None
+
+            if resp is None:
+                fallback_models = [
+                    {'name': 'qwen3:8b', 'display_name': 'qwen3:8b'},
+                    {'name': 'llama3:8b', 'display_name': 'llama3:8b'},
+                ]
+                return Response(
+                    {
+                        'models': fallback_models,
+                        'warning': '无法连接到 Ollama 服务，请检查服务是否已启动或更新端点配置。已提供默认模型列表以便继续配置。',
+                        'error': str(exc),
+                        'attempted_endpoint': endpoint,
+                        'alternate_attempted': alternate_endpoint,
+                    },
+                    status=status.HTTP_200_OK
+                )
 
         data = resp.json() if resp.content else {}
         models = data.get('models') or data.get('data') or []
@@ -321,7 +356,12 @@ class AIConfigViewSet(viewsets.ModelViewSet):
                 'size': item.get('size') or item.get('size_blobs') or item.get('details', {}).get('parameter_size')
             })
 
-        return Response({'models': normalized})
+        payload = {'models': normalized, 'resolved_endpoint': resolved_endpoint}
+        if warning_message:
+            payload['warning'] = warning_message
+            payload['auto_switched'] = resolved_endpoint != endpoint
+
+        return Response(payload)
     
     @action(detail=True, methods=['post'])
     def test(self, request, pk=None):

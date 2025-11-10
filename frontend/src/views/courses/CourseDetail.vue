@@ -3,11 +3,30 @@
     <el-card v-if="course">
       <template #header>
         <div class="course-header">
-          <h1>{{ course.title }}</h1>
-          <el-tag>{{ course.day_range }}</el-tag>
-          <el-tag type="success" style="margin-left: 10px">
-            {{ getDifficultyLabel(course.difficulty) }}
-          </el-tag>
+          <div class="header-left">
+            <h1>{{ course.title }}</h1>
+            <el-tag>{{ course.day_range }}</el-tag>
+            <el-tag type="success" class="difficulty-tag">
+              {{ getDifficultyLabel(course.difficulty) }}
+            </el-tag>
+          </div>
+          <div class="navigation-buttons">
+            <el-button
+              size="small"
+              :disabled="!course.previous_course"
+              @click="goToCourse(course.previous_course && course.previous_course.slug)"
+            >
+              上一课程
+            </el-button>
+            <el-button
+              size="small"
+              :disabled="!course.next_course"
+              type="primary"
+              @click="goToCourse(course.next_course && course.next_course.slug)"
+            >
+              下一课程
+            </el-button>
+          </div>
         </div>
       </template>
 
@@ -56,7 +75,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { courseApi } from '@/api'
 import { ElMessage } from 'element-plus'
@@ -83,6 +102,13 @@ const loadCourse = async () => {
   }
 }
 
+const goToCourse = (slug) => {
+  if (!slug) {
+    return
+  }
+  router.push({ name: 'CourseDetail', params: { slug } })
+}
+
 const goToLesson = (lesson) => {
   router.push(`/lessons/${lesson.slug}`)
 }
@@ -96,10 +122,13 @@ const handleLike = async () => {
     ElMessage.error('点赞失败')
   }
 }
-
-onMounted(() => {
-  loadCourse()
-})
+watch(
+  () => route.params.slug,
+  () => {
+    loadCourse()
+  },
+  { immediate: true }
+)
 </script>
 
 <style scoped>
@@ -108,10 +137,31 @@ onMounted(() => {
   margin: 0 auto;
 }
 
+.course-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .course-header h1 {
   margin: 0;
-  display: inline-block;
-  margin-right: 15px;
+}
+
+.difficulty-tag {
+  margin-left: 0;
+}
+
+.navigation-buttons {
+  display: flex;
+  gap: 10px;
 }
 
 .course-description {

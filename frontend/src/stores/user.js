@@ -6,6 +6,7 @@ export const useUserStore = defineStore('user', () => {
   const token = ref(localStorage.getItem('token') || '')
   const refreshToken = ref(localStorage.getItem('refreshToken') || '')
   const userInfo = ref(JSON.parse(localStorage.getItem('userInfo') || '{}'))
+  let autoLoginTask = null
   
   const isLoggedIn = computed(() => !!token.value)
   const isAdmin = computed(() => userInfo.value?.is_superuser || false)
@@ -64,6 +65,34 @@ export const useUserStore = defineStore('user', () => {
     delete axios.defaults.headers.common['Authorization']
   }
   
+  async function ensureDefaultAdminLogin() {
+    if (isLoggedIn.value) {
+      return
+    }
+
+    if (autoLoginTask) {
+      return autoLoginTask
+    }
+
+    const defaultCredentials = {
+      username: 'admin',
+      password: 'admin234',
+    }
+
+    autoLoginTask = (async () => {
+      try {
+        await login(defaultCredentials)
+      } catch (error) {
+        // 只在控制台提示，避免打扰用户；便于排查默认账户状态
+        console.warn('自动登录管理员账户失败:', error.message)
+      } finally {
+        autoLoginTask = null
+      }
+    })()
+
+    return autoLoginTask
+  }
+
   // 初始化时设置 token
   if (token.value) {
     axios.defaults.headers.common['Authorization'] = `Bearer ${token.value}`
@@ -80,5 +109,6 @@ export const useUserStore = defineStore('user', () => {
     login,
     register,
     logout,
+    ensureDefaultAdminLogin,
   }
 })

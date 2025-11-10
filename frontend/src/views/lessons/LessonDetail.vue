@@ -3,14 +3,33 @@
     <el-card v-if="lesson">
       <template #header>
         <div class="lesson-header">
-          <el-breadcrumb separator="/">
-            <el-breadcrumb-item :to="{ path: '/courses' }">课程</el-breadcrumb-item>
-            <el-breadcrumb-item :to="{ path: `/courses/${lesson.course_slug}` }">
-              {{ lesson.course_title }}
-            </el-breadcrumb-item>
-            <el-breadcrumb-item>{{ lesson.title }}</el-breadcrumb-item>
-          </el-breadcrumb>
-          <h1>Day{{ lesson.day_number.toString().padStart(2, '0') }} - {{ lesson.title }}</h1>
+          <div class="header-left">
+            <el-breadcrumb separator="/">
+              <el-breadcrumb-item :to="{ path: '/courses' }">课程</el-breadcrumb-item>
+              <el-breadcrumb-item :to="{ path: `/courses/${lesson.course_slug}` }">
+                {{ lesson.course_title }}
+              </el-breadcrumb-item>
+              <el-breadcrumb-item>{{ lesson.title }}</el-breadcrumb-item>
+            </el-breadcrumb>
+            <h1>Day{{ lesson.day_number.toString().padStart(2, '0') }} - {{ lesson.title }}</h1>
+          </div>
+          <div class="navigation-buttons" v-if="previousLesson || nextLesson">
+            <el-button
+              size="small"
+              :disabled="!previousLesson"
+              @click="goToLesson(previousLesson && previousLesson.slug)"
+            >
+              上一课时
+            </el-button>
+            <el-button
+              size="small"
+              type="primary"
+              :disabled="!nextLesson"
+              @click="goToLesson(nextLesson && nextLesson.slug)"
+            >
+              下一课时
+            </el-button>
+          </div>
         </div>
       </template>
 
@@ -108,14 +127,15 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, computed, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { courseApi, progressApi } from '@/api'
 import { ElMessage } from 'element-plus'
 import { Star, Link, Search } from '@element-plus/icons-vue'
 import MarkdownViewer from '@/components/MarkdownViewer.vue'
 
 const route = useRoute()
+const router = useRouter()
 const lesson = ref(null)
 const loading = ref(false)
 const searchTerm = ref('')
@@ -129,6 +149,13 @@ const loadLesson = async () => {
   } finally {
     loading.value = false
   }
+}
+
+const goToLesson = (slug) => {
+  if (!slug) {
+    return
+  }
+  router.push({ name: 'LessonDetail', params: { slug } })
 }
 
 const markAsCompleted = async () => {
@@ -258,14 +285,41 @@ const openGithubLink = () => {
   }
 }
 
-onMounted(() => {
-  loadLesson()
-})
+const previousLesson = computed(() => lesson.value?.previous_lesson || null)
+const nextLesson = computed(() => lesson.value?.next_lesson || null)
+
+watch(
+  () => route.params.slug,
+  () => {
+    searchTerm.value = ''
+    loadLesson()
+  },
+  { immediate: true }
+)
 </script>
 
 <style scoped>
+.lesson-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 .lesson-header h1 {
   margin: 15px 0;
+}
+
+.navigation-buttons {
+  display: flex;
+  gap: 10px;
+  align-items: center;
 }
 
 .lesson-content {
@@ -310,6 +364,13 @@ mark {
   position: sticky;
   top: 110px;
   align-self: flex-start;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.info-column :deep(.el-card) {
+  width: 100%;
+  max-width: 320px;
 }
 
 .floating-card {
@@ -338,6 +399,11 @@ mark {
   .info-column {
     position: static;
     margin-top: 24px;
+  }
+
+  .lesson-header {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
 

@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.db.models import Q
 from .models import (
     CourseCategory, Course, Lesson, LessonResource, UserProgress, UserNote,
     AIConfig, ChatHistory
@@ -45,14 +46,44 @@ class CourseDetailSerializer(serializers.ModelSerializer):
     """课程详情序列化器"""
     category = CourseCategorySerializer(read_only=True)
     lessons = LessonListSerializer(many=True, read_only=True)
+    previous_course = serializers.SerializerMethodField()
+    next_course = serializers.SerializerMethodField()
     
     class Meta:
         model = Course
         fields = [
             'id', 'title', 'slug', 'description', 'day_range', 'cover_image',
             'difficulty', 'category', 'lessons', 'view_count', 'like_count',
+            'previous_course', 'next_course',
             'created_at', 'updated_at'
         ]
+
+    def _build_navigation_payload(self, course):
+        if not course:
+            return None
+        return {
+            'slug': course.slug,
+            'title': course.title,
+            'day_range': course.day_range,
+        }
+
+    def get_previous_course(self, obj):
+        queryset = Course.objects.filter(is_published=True).exclude(pk=obj.pk)
+        queryset = queryset.filter(
+            Q(order__lt=obj.order) |
+            (Q(order=obj.order) & Q(id__lt=obj.id))
+        ).order_by('-order', '-id')
+        previous_course = queryset.first()
+        return self._build_navigation_payload(previous_course)
+
+    def get_next_course(self, obj):
+        queryset = Course.objects.filter(is_published=True).exclude(pk=obj.pk)
+        queryset = queryset.filter(
+            Q(order__gt=obj.order) |
+            (Q(order=obj.order) & Q(id__gt=obj.id))
+        ).order_by('order', 'id')
+        next_course = queryset.first()
+        return self._build_navigation_payload(next_course)
 
 
 class LessonResourceSerializer(serializers.ModelSerializer):
@@ -68,13 +99,16 @@ class LessonDetailSerializer(serializers.ModelSerializer):
     course_slug = serializers.CharField(source='course.slug', read_only=True)
     resources = LessonResourceSerializer(many=True, read_only=True)
     user_progress = serializers.SerializerMethodField()
+    previous_lesson = serializers.SerializerMethodField()
+    next_lesson = serializers.SerializerMethodField()
     
     class Meta:
         model = Lesson
         fields = [
             'id', 'day_number', 'title', 'slug', 'content', 'summary',
             'code_url', 'video_url', 'estimated_time', 'course_title', 'course_slug',
-            'resources', 'user_progress', 'view_count', 'like_count',
+            'resources', 'user_progress', 'previous_lesson', 'next_lesson',
+            'view_count', 'like_count',
             'created_at', 'updated_at'
         ]
     
@@ -91,6 +125,70 @@ class LessonDetailSerializer(serializers.ModelSerializer):
             except UserProgress.DoesNotExist:
                 return None
         return None
+
+    def _build_navigation_payload(self, lesson):
+        if not lesson:
+            return None
+        course = getattr(lesson, 'course', None)
+        return {
+            'slug': lesson.slug,
+            'title': lesson.title,
+            'day_number': lesson.day_number,
+            'course_slug': getattr(course, 'slug', None),
+            'course_title': getattr(course, 'title', None),
+        }
+
+    def get_previous_lesson(self, obj):
+        # 优先查找同一课程内的上一课时，若不存在则尝试跨课程回溯
+        internal_queryset = Lesson.objects.filter(
+            course=obj.course,
+            is_published=True
+        ).exclude(pk=obj.pk)
+        internal_queryset = internal_queryset.filter(
+            Q(order__lt=obj.order) |
+            (Q(order=obj.order) & Q(day_number__lt=obj.day_number)) |
+            (Q(order=obj.order) & Q(day_number=obj.day_number) & Q(id__lt=obj.id))
+        ).order_by('-order', '-day_number', '-id')
+
+        candidate = internal_queryset.first()
+        if candidate:
+            return self._build_navigation_payload(candidate)
+
+        cross_queryset = Lesson.objects.filter(is_published=True).exclude(pk=obj.pk)
+        cross_queryset = cross_queryset.filter(
+            Q(course__order__lt=obj.course.order) |
+            (Q(course__order=obj.course.order) & Q(order__lt=obj.order)) |
+            (Q(course__order=obj.course.order) & Q(order=obj.order) & Q(day_number__lt=obj.day_number)) |
+            (Q(course__order=obj.course.order) & Q(order=obj.order) & Q(day_number=obj.day_number) & Q(id__lt=obj.id))
+        ).order_by('-course__order', '-order', '-day_number', '-id')
+
+        return self._build_navigation_payload(cross_queryset.first())
+
+    def get_next_lesson(self, obj):
+        # 优先查找同一课程内的下一课时，若不存在则尝试跨课程前进
+        internal_queryset = Lesson.objects.filter(
+            course=obj.course,
+            is_published=True
+        ).exclude(pk=obj.pk)
+        internal_queryset = internal_queryset.filter(
+            Q(order__gt=obj.order) |
+            (Q(order=obj.order) & Q(day_number__gt=obj.day_number)) |
+            (Q(order=obj.order) & Q(day_number=obj.day_number) & Q(id__gt=obj.id))
+        ).order_by('order', 'day_number', 'id')
+
+        candidate = internal_queryset.first()
+        if candidate:
+            return self._build_navigation_payload(candidate)
+
+        cross_queryset = Lesson.objects.filter(is_published=True).exclude(pk=obj.pk)
+        cross_queryset = cross_queryset.filter(
+            Q(course__order__gt=obj.course.order) |
+            (Q(course__order=obj.course.order) & Q(order__gt=obj.order)) |
+            (Q(course__order=obj.course.order) & Q(order=obj.order) & Q(day_number__gt=obj.day_number)) |
+            (Q(course__order=obj.course.order) & Q(order=obj.order) & Q(day_number=obj.day_number) & Q(id__gt=obj.id))
+        ).order_by('course__order', 'order', 'day_number', 'id')
+
+        return self._build_navigation_payload(cross_queryset.first())
 
 
 class UserProgressSerializer(serializers.ModelSerializer):

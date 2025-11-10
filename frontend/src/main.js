@@ -7,6 +7,7 @@ import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 
 import App from './App.vue'
 import router from './router'
+import { useUserStore } from '@/stores/user'
 
 const app = createApp(App)
 const pinia = createPinia()
@@ -17,6 +18,9 @@ for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
 }
 
 app.use(pinia)
+const userStore = useUserStore(pinia)
+// 尝试在应用启动时自动使用默认管理员保持登录态
+userStore.ensureDefaultAdminLogin()
 app.use(router)
 app.use(ElementPlus, { locale: zhCn })
 
