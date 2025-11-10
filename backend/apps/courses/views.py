@@ -518,22 +518,85 @@ class ChatViewSet(viewsets.ViewSet):
         sessions = ChatHistory.objects.filter(
             user=request.user
         ).values('session_id').distinct()
-        
+
         session_list = []
         for session in sessions:
             sid = session['session_id']
-            last_msg = ChatHistory.objects.filter(
+            # 获取会话的所有消息
+            session_messages = ChatHistory.objects.filter(
                 user=request.user,
                 session_id=sid
-            ).order_by('-created_at').first()
-            
-            if last_msg:
-                session_list.append({
+            ).order_by('-created_at')
+
+            if session_messages.exists():
+                last_msg = session_messages.first()
+                first_msg = session_messages.last()
+
+                # 计算消息数量
+                message_count = session_messages.count()
+
+                # 获取上下文信息
+                context = {}
+                for msg in session_messages:
+                    if msg.context and msg.context.get('lesson_title'):
+                        context['lesson_title'] = msg.context['lesson_title']
+                        break
+
+                session_info = {
                     'session_id': sid,
                     'last_message': last_msg.content[:50] + '...' if len(last_msg.content) > 50 else last_msg.content,
-                    'updated_at': last_msg.created_at
-                })
-        
-        # 按时间倒序
-        session_list.sort(key=lambda x: x['updated_at'], reverse=True)
+                    'last_message_time': last_msg.created_at,
+                    'first_message_time': first_msg.created_at,
+                    'message_count': message_count,
+                    'context': context
+                }
+
+                # 如果有选中文本的上下文，使用它作为会话标题
+                if last_msg.context and last_msg.context.get('selected_text'):
+                    session_info['title'] = f"关于: {last_msg.context['selected_text'][:30]}..."
+
+                session_list.append(session_info)
+
+        # 按最后活动时间倒序
+        session_list.sort(key=lambda x: x['last_message_time'], reverse=True)
         return Response(session_list)
+
+    @action(detail=True, methods=['delete'])
+    def delete_session(self, request, pk=None):
+        """删除指定会话"""
+        try:
+            # 删除该会话的所有消息
+            deleted_count, _ = ChatHistory.objects.filter(
+                user=request.user,
+                session_id=pk
+            ).delete()
+
+            if deleted_count > 0:
+                return Response({'message': '会话删除成功'})
+            else:
+                return Response(
+                    {'error': '会话不存在或已被删除'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        except Exception as e:
+            return Response(
+                {'error': f'删除失败: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['delete'])
+    def clear_all(self, request):
+        """清空所有会话"""
+        try:
+            deleted_count, _ = ChatHistory.objects.filter(
+                user=request.user
+            ).delete()
+
+            return Response({
+                'message': f'成功删除{deleted_count}条消息'
+            })
+        except Exception as e:
+            return Response(
+                {'error': f'清空失败: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

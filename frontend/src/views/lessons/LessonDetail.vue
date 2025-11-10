@@ -50,7 +50,13 @@
           <div class="lesson-content">
             <MarkdownViewer :content="lesson.content" />
           </div>
-
+          <TextSelectionToolbar
+            @copy="handleCopy"
+            @note="handleNote"
+            @ai-question="handleAIQuestion"
+          />
+        </el-col>
+        <el-col :span="6">
           <div class="lesson-resources" v-if="lesson.resources && lesson.resources.length > 0">
             <h3>课程资源</h3>
             <el-table v-if="filteredResources.length" :data="filteredResources">
@@ -123,6 +129,26 @@
         </el-col>
       </el-row>
     </el-card>
+
+    <!-- 快速记笔记对话框 -->
+    <QuickNoteDialog
+      :visible="showNoteDialog"
+      :selected-text="selectedText"
+      :context="selectedContext"
+      :current-lesson="lesson"
+      @close="showNoteDialog = $event"
+      @success="handleNoteSuccess"
+    />
+
+    <!-- AI问答对话框 -->
+    <AIQuestionDialog
+      :visible="showAIQuestionDialog"
+      :selected-text="selectedText"
+      :context="selectedContext"
+      :current-lesson="lesson"
+      @close="showAIQuestionDialog = $event"
+      @success="handleAIQuestionSuccess"
+    />
   </div>
 </template>
 
@@ -133,12 +159,19 @@ import { courseApi, progressApi } from '@/api'
 import { ElMessage } from 'element-plus'
 import { Star, Link, Search } from '@element-plus/icons-vue'
 import MarkdownViewer from '@/components/MarkdownViewer.vue'
+import TextSelectionToolbar from '@/components/TextSelectionToolbar.vue'
+import QuickNoteDialog from '@/components/QuickNoteDialog.vue'
+import AIQuestionDialog from '@/components/AIQuestionDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
 const lesson = ref(null)
 const loading = ref(false)
 const searchTerm = ref('')
+const showNoteDialog = ref(false)
+const showAIQuestionDialog = ref(false)
+const selectedText = ref('')
+const selectedContext = ref('')
 
 const loadLesson = async () => {
   loading.value = true
@@ -175,6 +208,30 @@ const handleLike = async () => {
   } catch (error) {
     ElMessage.error('点赞失败')
   }
+}
+
+const handleCopy = (text) => {
+  ElMessage.success('复制功能已触发')
+}
+
+const handleNote = (selectionData) => {
+  selectedText.value = selectionData.text
+  selectedContext.value = selectionData.context
+  showNoteDialog.value = true
+}
+
+const handleAIQuestion = (selectionData) => {
+  selectedText.value = selectionData.text
+  selectedContext.value = selectionData.context
+  showAIQuestionDialog.value = true
+}
+
+const handleNoteSuccess = (noteData) => {
+  ElMessage.success('笔记创建成功')
+}
+
+const handleAIQuestionSuccess = (chatData) => {
+  ElMessage.success('AI问答已保存')
 }
 
 const downloadResource = (resource) => {
