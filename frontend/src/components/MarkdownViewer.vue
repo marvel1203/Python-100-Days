@@ -1,5 +1,5 @@
 <template>
-  <div class="markdown-viewer" v-html="renderedContent"></div>
+  <div class="markdown-body markdown-viewer" v-html="renderedContent"></div>
 </template>
 
 <script setup>
@@ -43,42 +43,42 @@ const renderedContent = computed(() => {
 </script>
 
 <style>
-.markdown-viewer {
+.markdown-body.markdown-viewer {
   line-height: 1.8;
   color: #333;
 }
 
-.markdown-viewer h1,
-.markdown-viewer h2,
-.markdown-viewer h3,
-.markdown-viewer h4 {
+.markdown-body.markdown-viewer h1,
+.markdown-body.markdown-viewer h2,
+.markdown-body.markdown-viewer h3,
+.markdown-body.markdown-viewer h4 {
   margin-top: 24px;
   margin-bottom: 16px;
   font-weight: 600;
   line-height: 1.25;
 }
 
-.markdown-viewer h1 {
+.markdown-body.markdown-viewer h1 {
   font-size: 2em;
   border-bottom: 1px solid #eaecef;
   padding-bottom: 0.3em;
 }
 
-.markdown-viewer h2 {
+.markdown-body.markdown-viewer h2 {
   font-size: 1.5em;
   border-bottom: 1px solid #eaecef;
   padding-bottom: 0.3em;
 }
 
-.markdown-viewer h3 {
+.markdown-body.markdown-viewer h3 {
   font-size: 1.25em;
 }
 
-.markdown-viewer p {
+.markdown-body.markdown-viewer p {
   margin-bottom: 16px;
 }
 
-.markdown-viewer code {
+.markdown-body.markdown-viewer code {
   background-color: #f6f8fa;
   padding: 0.2em 0.4em;
   margin: 0;
@@ -86,7 +86,7 @@ const renderedContent = computed(() => {
   border-radius: 3px;
 }
 
-.markdown-viewer pre {
+.markdown-body.markdown-viewer pre {
   background-color: #f6f8fa;
   padding: 16px;
   overflow: auto;
@@ -96,41 +96,41 @@ const renderedContent = computed(() => {
   margin-bottom: 16px;
 }
 
-.markdown-viewer pre code {
+.markdown-body.markdown-viewer pre code {
   background-color: transparent;
   padding: 0;
 }
 
-.markdown-viewer ul,
-.markdown-viewer ol {
+.markdown-body.markdown-viewer ul,
+.markdown-body.markdown-viewer ol {
   margin-bottom: 16px;
   padding-left: 2em;
 }
 
-.markdown-viewer li {
+.markdown-body.markdown-viewer li {
   margin-bottom: 0.25em;
 }
 
-.markdown-viewer blockquote {
+.markdown-body.markdown-viewer blockquote {
   padding: 0 1em;
   color: #6a737d;
   border-left: 0.25em solid #dfe2e5;
   margin-bottom: 16px;
 }
 
-.markdown-viewer table {
+.markdown-body.markdown-viewer table {
   border-collapse: collapse;
   width: 100%;
   margin-bottom: 16px;
 }
 
-.markdown-viewer table th,
-.markdown-viewer table td {
+.markdown-body.markdown-viewer table th,
+.markdown-body.markdown-viewer table td {
   padding: 6px 13px;
   border: 1px solid #dfe2e5;
 }
 
-.markdown-viewer table tr:nth-child(2n) {
+.markdown-body.markdown-viewer table tr:nth-child(2n) {
   background-color: #f6f8fa;
 }
 </style>

@@ -600,3 +600,45 @@ class ChatViewSet(viewsets.ViewSet):
                 {'error': f'清空失败: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+class DebugViewSet(viewsets.ViewSet):
+    """调试视图集 - 用于诊断nginx代理问题"""
+
+    @action(detail=False, methods=['get'])
+    def request_info(self, request):
+        """返回请求信息用于调试"""
+        import os
+        from django.conf import settings
+
+        return Response({
+            'method': request.method,
+            'path': request.path,
+            'host': request.get_host(),
+            'headers': dict(request.headers),
+            'GET_params': dict(request.GET),
+            'META': {
+                'DJANGO_SETTINGS_MODULE': os.environ.get('DJANGO_SETTINGS_MODULE'),
+                'ROOT_URLCONF': getattr(settings, 'ROOT_URLCONF', 'Not set'),
+                'ALLOWED_HOSTS': getattr(settings, 'ALLOWED_HOSTS', []),
+                'DEBUG': getattr(settings, 'DEBUG', False),
+            },
+            'time': timezone.now().isoformat()
+        })
+        import os
+        from django.conf import settings
+
+        return Response({
+            'method': request.method,
+            'path': request.path,
+            'host': request.get_host(),
+            'headers': dict(request.headers),
+            'GET_params': dict(request.GET),
+            'META': {
+                'DJANGO_SETTINGS_MODULE': os.environ.get('DJANGO_SETTINGS_MODULE'),
+                'ROOT_URLCONF': getattr(settings, 'ROOT_URLCONF', 'Not set'),
+                'ALLOWED_HOSTS': getattr(settings, 'ALLOWED_HOSTS', []),
+                'DEBUG': getattr(settings, 'DEBUG', False),
+            },
+            'time': timezone.now().isoformat()
+        })

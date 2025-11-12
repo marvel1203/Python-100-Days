@@ -178,7 +178,7 @@ const handleSelection = () => {
     ? commonAncestor
     : commonAncestor.parentNode
 
-  if (!validContainer || !validContainer.closest('.lesson-content, .markdown-body')) {
+  if (!validContainer || !validContainer.closest('.lesson-content, .markdown-body, .lesson-resources, .search-results, .github-link, .el-card__body, .el-descriptions, .el-table')) {
     hideToolbar()
     return
   }

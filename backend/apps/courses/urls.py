@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     CourseCategoryViewSet, CourseViewSet, LessonViewSet,
     UserProgressViewSet, UserNoteViewSet,
-    AIConfigViewSet, ChatViewSet
+    AIConfigViewSet, ChatViewSet, DebugViewSet
 )
 
 router = DefaultRouter()
@@ -14,6 +14,7 @@ router.register('progress', UserProgressViewSet, basename='progress')
 router.register('notes', UserNoteViewSet, basename='note')
 router.register('ai-config', AIConfigViewSet, basename='ai-config')
 router.register('chat', ChatViewSet, basename='chat')
+router.register('debug', DebugViewSet, basename='debug')
 
 urlpatterns = [
     path('', include(router.urls)),

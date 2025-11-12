@@ -25,6 +25,39 @@ class ExerciseViewSet(viewsets.ReadOnlyModelViewSet):
         if self.action == 'retrieve':
             return ExerciseDetailSerializer
         return ExerciseListSerializer
+
+    def list(self, request, *args, **kwargs):
+        """
+        练习列表接口。
+        在调用基类列表逻辑前对查询参数进行基础校验，避免无效参数导致后续错误。
+
+        - 校验 difficulty 是否在允许范围: easy/medium/hard
+        - 校验 lesson 是否为整数
+        """
+        errors = {}
+        difficulty = request.query_params.get('difficulty')
+        if difficulty and difficulty not in ('easy', 'medium', 'hard'):
+            errors['difficulty'] = '无效的难度参数，应为 easy/medium/hard'
+
+        lesson = request.query_params.get('lesson')
+        if lesson:
+            try:
+                int(lesson)
+            except Exception:
+                errors['lesson'] = 'lesson 参数必须为整数'
+
+        if errors:
+            return Response(
+                {
+                    'success': False,
+                    'code': 'invalid_params',
+                    'message': '请求参数错误',
+                    'errors': errors,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return super().list(request, *args, **kwargs)
     
     @action(detail=False, methods=['post'], permission_classes=[])
     def run_code(self, request):

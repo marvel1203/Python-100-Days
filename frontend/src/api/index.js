@@ -5,35 +5,40 @@ export const courseApi = {
   getCategories() {
     return request.get('/courses/categories/')
   },
-  
+
   // 获取课程列表
   getCourses(params) {
     return request.get('/courses/courses/', { params })
   },
-  
+
   // 获取课程详情
   getCourseDetail(slug) {
     return request.get(`/courses/courses/${slug}/`)
   },
-  
+
   // 点赞课程
   likeCourse(slug) {
     return request.post(`/courses/courses/${slug}/like/`)
   },
-  
+
   // 获取课时列表
   getLessons(params) {
     return request.get('/courses/lessons/', { params })
   },
-  
+
   // 获取课时详情
   getLessonDetail(slug) {
     return request.get(`/courses/lessons/${slug}/`)
   },
-  
+
   // 点赞课时
   likeLesson(slug) {
     return request.post(`/courses/lessons/${slug}/like/`)
+  },
+
+  // 获取AI配置
+  getAIConfig() {
+    return request.get('/courses/ai-config/current/')
   },
 }
 

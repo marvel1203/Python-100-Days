@@ -211,19 +211,51 @@ const handleLike = async () => {
 }
 
 const handleCopy = (text) => {
-  ElMessage.success('复制功能已触发')
+  if (!text) {
+    ElMessage.warning('没有选中文本')
+    return
+  }
+
+  navigator.clipboard.writeText(text).then(() => {
+    ElMessage.success('已复制到剪贴板')
+    emit('copy', text)
+    hideToolbar()
+  }).catch((err) => {
+    console.error('复制失败:', err)
+    ElMessage.error('复制失败，请手动复制')
+  })
 }
 
 const handleNote = (selectionData) => {
+  if (!selectionData.text.trim()) {
+    ElMessage.warning('请选择要记录的文本')
+    return
+  }
+
   selectedText.value = selectionData.text
   selectedContext.value = selectionData.context
   showNoteDialog.value = true
 }
 
 const handleAIQuestion = (selectionData) => {
-  selectedText.value = selectionData.text
-  selectedContext.value = selectionData.context
-  showAIQuestionDialog.value = true
+  if (!selectionData.text.trim()) {
+    ElMessage.warning('请选择要提问的文本')
+    return
+  }
+
+  // 检查AI配置
+  courseApi.getAIConfig().then(config => {
+    if (!config.is_active) {
+      ElMessage.warning('AI服务未配置，请先配置AI服务')
+      return
+    }
+
+    selectedText.value = selectionData.text
+    selectedContext.value = selectionData.context
+    showAIQuestionDialog.value = true
+  }).catch(() => {
+    ElMessage.warning('无法获取AI配置')
+  })
 }
 
 const handleNoteSuccess = (noteData) => {

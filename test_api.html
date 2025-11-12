@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API测试</title>
+</head>
+<body>
+    <h1>API测试页面</h1>
+    <div id="result"></div>
+
+    <script>
+        async function testAPI() {
+            const resultDiv = document.getElementById('result');
+
+            try {
+                // 测试直接访问Django服务
+                const directResponse = await fetch('http://localhost:8020/api/courses/lessons/');
+                const directData = await directResponse.json();
+                resultDiv.innerHTML += '<h2>直接访问Django服务 (端口8020):</h2>';
+                resultDiv.innerHTML += `<pre>${JSON.stringify(directData, null, 2)}</pre>`;
+
+                // 测试通过nginx代理访问
+                const nginxResponse = await fetch('http://localhost/api/courses/lessons/');
+                const nginxData = await nginxResponse.text();
+                resultDiv.innerHTML += '<h2>通过nginx代理访问 (端口80):</h2>';
+                resultDiv.innerHTML += `<pre>${nginxData.substring(0, 500)}...</pre>`;
+
+                // 测试通过前端代理访问
+                const frontendResponse = await fetch('/api/courses/lessons/');
+                const frontendData = await frontendResponse.json();
+                resultDiv.innerHTML += '<h2>通过前端代理访问:</h2>';
+                resultDiv.innerHTML += `<pre>${JSON.stringify(frontendData, null, 2)}</pre>`;
+
+            } catch (error) {
+                resultDiv.innerHTML += `<p style="color: red;">错误: ${error.message}</p>`;
+            }
+        }
+
+        // 页面加载完成后执行测试
+        window.addEventListener('load', testAPI);
+    </script>
+</body>
+</html>
