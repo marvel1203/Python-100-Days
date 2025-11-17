@@ -114,7 +114,15 @@ import { ElMessage } from 'element-plus'
 import axios from 'axios'
 
 const props = defineProps({
-  modelValue: Boolean
+  modelValue: Boolean,
+  initialCode: {
+    type: String,
+    default: ''
+  },
+  language: {
+    type: String,
+    default: 'python'
+  }
 })
 
 const emit = defineEmits(['update:modelValue'])
@@ -130,12 +138,11 @@ from datetime import datetime
 print("Hello, Python 100 Days!")
 print("当前时间:", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
-# 示例：快速计算平方和
 total = sum(i * i for i in range(10))
 print("平方和:", total)
 `
 
-const code = ref(defaultCode)
+const code = ref('')
 
 const result = ref(null)
 const running = ref(false)
@@ -172,6 +179,7 @@ const handleKeydown = (event) => {
 
 onMounted(() => {
   window.addEventListener('keydown', handleKeydown)
+  code.value = props.initialCode?.trim() ? props.initialCode : props.language === 'python' ? defaultCode : ''
 })
 
 onBeforeUnmount(() => {
@@ -200,13 +208,26 @@ const runCode = async () => {
   result.value = null
 
   try {
-    const res = await axios.post('/api/exercises/exercises/run_code/', {
-      code: code.value
-    })
-    result.value = res.data
-    lastRunAt.value = new Date()
+    if (props.language === 'python') {
+      const { sanitized, tips } = sanitizePython(code.value)
+      if (Array.isArray(tips) && tips.length) {
+        ElMessage.warning('已自动处理受限语句: ' + tips.join('；'))
+      }
+      const res = await axios.post('/api/exercises/exercises/run_code/', {
+        code: sanitized
+      })
+      result.value = res.data
+      lastRunAt.value = new Date()
+    } else {
+      ElMessage.warning('当前仅支持 Python 代码运行')
+    }
   } catch (error) {
-    ElMessage.error('运行失败: ' + (error.response?.data?.error || error.message))
+    const msg = error.response?.data?.error || error.message || '运行失败'
+    if (/ImportError/i.test(String(msg))) {
+      ElMessage.error('运行失败: ' + msg + '。建议改用 datetime.strftime 或移除受限模块')
+    } else {
+      ElMessage.error('运行失败: ' + msg)
+    }
   } finally {
     running.value = false
   }
@@ -220,6 +241,42 @@ const clearCode = () => {
 
 const handleClose = () => {
   visible.value = false
+}
+
+function sanitizePython(src) {
+  const tips = []
+  let out = src
+  const hasDatetime = /from\s+datetime\s+import\s+datetime|import\s+datetime/i.test(out)
+  // 处理 time 导入与常见用法
+  if (/^\s*(import\s+time|from\s+time\s+import\s+.+)/im.test(out)) {
+    // 移除导入语句
+    out = out.replace(/^\s*import\s+time\s*$/gmi, '')
+    out = out.replace(/^\s*from\s+time\s+import\s+.*$/gmi, '')
+    // 替换 time.strftime 为 datetime.now().strftime
+    out = out.replace(/time\.strftime\s*\(([^)]*)\)/g, (m, p1) => {
+      return `datetime.now().strftime(${p1})`
+    })
+    // 替换 time.gmtime()/localtime() + strftime 组合的简单场景
+    out = out.replace(/time\.(?:gmtime|localtime)\s*\([^)]*\)/g, 'datetime.now()')
+    // 移除 sleep 调用以避免阻塞
+    out = out.replace(/time\.sleep\s*\([^)]*\)\s*\n?/g, '')
+    tips.push('移除受限模块 time 的导入并替换为 datetime')
+    if (!hasDatetime) {
+      out = `from datetime import datetime\n` + out
+    }
+  }
+  // 过滤危险模块
+  const forbidden = ['os', 'sys', 'subprocess', 'socket', 'requests']
+  forbidden.forEach(mod => {
+    const re1 = new RegExp(`^\\s*import\\s+${mod}\\s*$`, 'mi')
+    const re2 = new RegExp(`^\\s*from\\s+${mod}\\s+import\\s+.*$`, 'mi')
+    if (re1.test(out) || re2.test(out)) {
+      out = out.replace(re1, '')
+      out = out.replace(re2, '')
+      tips.push(`移除受限模块 ${mod} 的导入`)
+    }
+  })
+  return { sanitized: out, tips }
 }
 </script>
 

@@ -8,6 +8,7 @@ import signal
 import traceback
 import resource
 from contextlib import contextmanager
+import importlib
 import json
 
 
@@ -70,6 +71,14 @@ class CodeExecutor:
             self.set_memory_limit()
             
             # 创建受限的全局命名空间
+            allowed_modules = {'math', 'random', 'datetime', 'statistics'}
+
+            def safe_import(name, globals=None, locals=None, fromlist=(), level=0):
+                base = name.split('.')[0]
+                if base not in allowed_modules:
+                    raise ImportError(f'禁止导入模块: {base}')
+                return importlib.import_module(name)
+
             restricted_globals = {
                 '__builtins__': {
                     'print': print,
@@ -91,6 +100,7 @@ class CodeExecutor:
                     'zip': zip,
                     'map': map,
                     'filter': filter,
+                    '__import__': safe_import,
                     'True': True,
                     'False': False,
                     'None': None,
@@ -205,7 +215,8 @@ class CodeExecutor:
         forbidden_keywords = [
             'import os', 'import sys', 'import subprocess', 
             'import socket', 'import requests',
-            '__import__', 'eval', 'exec', 'compile',
+            'import time', 'from time import',
+            'eval', 'exec', 'compile',
             'open(', 'file(', 'input(',
         ]
         

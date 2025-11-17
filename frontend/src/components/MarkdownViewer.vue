@@ -1,14 +1,16 @@
 <template>
   <div class="markdown-body markdown-viewer" v-html="renderedContent"></div>
+  <CodeRunnerDialog v-model="runnerVisible" :initialCode="runnerCode" :language="runnerLang" />
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted, onUpdated, ref, nextTick } from 'vue'
 import MarkdownIt from 'markdown-it'
 import hljs from 'highlight.js/lib/core'
 import python from 'highlight.js/lib/languages/python'
 import javascript from 'highlight.js/lib/languages/javascript'
 import 'highlight.js/styles/github-dark.css'
+import CodeRunnerDialog from './CodeRunnerDialog.vue'
 
 // 注册语言
 hljs.registerLanguage('python', python)
@@ -28,17 +30,53 @@ const md = new MarkdownIt({
   highlight: function (str, lang) {
     if (lang && hljs.getLanguage(lang)) {
       try {
-        return '<pre class="hljs"><code>' +
-               hljs.highlight(str, { language: lang, ignoreIllegals: true }).value +
-               '</code></pre>'
+        const highlighted = hljs.highlight(str, { language: lang, ignoreIllegals: true }).value
+        return '<div class="code-block-wrap">' +
+               '<button class="run-code-btn" data-lang="' + (lang || 'text') + '">▶ 运行</button>' +
+               '<pre class="hljs"><code>' + highlighted + '</code></pre>' +
+               '</div>'
       } catch (__) {}
     }
-    return '<pre class="hljs"><code>' + md.utils.escapeHtml(str) + '</code></pre>'
+    return '<div class="code-block-wrap">' +
+           '<button class="run-code-btn" data-lang="text">▶ 运行</button>' +
+           '<pre class="hljs"><code>' + md.utils.escapeHtml(str) + '</code></pre>' +
+           '</div>'
   }
 })
 
 const renderedContent = computed(() => {
   return md.render(props.content || '')
+})
+
+const runnerVisible = ref(false)
+const runnerCode = ref('')
+const runnerLang = ref('python')
+
+const bindRunButtons = () => {
+  const container = document.querySelector('.markdown-viewer')
+  if (!container) return
+  const buttons = container.querySelectorAll('.run-code-btn')
+  buttons.forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const target = e.currentTarget
+      const lang = target.getAttribute('data-lang') || 'text'
+      const codeEl = target.nextElementSibling?.querySelector('code')
+      const raw = codeEl ? codeEl.textContent || '' : ''
+      runnerCode.value = raw
+      runnerLang.value = lang === 'python' ? 'python' : lang
+      runnerVisible.value = true
+    })
+  })
+}
+
+onMounted(async () => {
+  await nextTick()
+  bindRunButtons()
+})
+
+onUpdated(async () => {
+  await nextTick()
+  bindRunButtons()
 })
 </script>
 
@@ -134,3 +172,23 @@ const renderedContent = computed(() => {
   background-color: #f6f8fa;
 }
 </style>
+.code-block-wrap {
+  position: relative;
+}
+
+.run-code-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: #10b981;
+  color: #fff;
+  border: none;
+  border-radius: 14px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.run-code-btn:hover {
+  background: #0ea5e9;
+}

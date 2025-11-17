@@ -7,7 +7,7 @@ from django.db.models import F
 
 from .models import Exercise, Submission
 from .serializers import ExerciseListSerializer, ExerciseDetailSerializer, SubmissionSerializer
-from .code_executor import CodeExecutor
+from .safe_executor import CodeExecutor
 
 
 class ExerciseViewSet(viewsets.ReadOnlyModelViewSet):
