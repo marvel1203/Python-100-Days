@@ -14,11 +14,11 @@ export default defineConfig({
     port: 9540,
     proxy: {
       '/api': {
-        target: 'http://localhost:8020',  // 直接访问Django服务
+        target: process.env.VITE_API_TARGET || 'http://backend:8020',
         changeOrigin: true,
       },
       '/course-res': {
-        target: 'http://localhost:8020',  // 课程资源文件代理到后端
+        target: process.env.VITE_API_TARGET || 'http://backend:8020',
         changeOrigin: true,
       },
     },
