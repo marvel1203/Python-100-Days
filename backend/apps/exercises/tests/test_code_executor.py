@@ -12,6 +12,12 @@ class TestCodeExecutor(unittest.TestCase):
         self.assertEqual(res['status'], 'passed')
         self.assertIn('hello', res['output'])
 
+    def test_simple_addition(self):
+        code = "a=1\nb=2\nprint(a+b)"
+        res = self.executor.execute(code)
+        self.assertEqual(res['status'], 'passed')
+        self.assertEqual(res['output'].strip(), '3')
+
     def test_allowed_import_datetime(self):
         code = "from datetime import datetime\nprint(datetime.now().year)"
         res = self.executor.execute(code)
@@ -51,6 +57,11 @@ def add(a, b):
         res = self.executor.execute(code)
         self.assertEqual(res['status'], 'error')
         self.assertIn('SyntaxError', res['error_message'])
+
+    def test_python_version(self):
+        import sys
+        self.assertGreaterEqual(sys.version_info.major, 3)
+        self.assertGreaterEqual(sys.version_info.minor, 6)
 
 
 if __name__ == '__main__':

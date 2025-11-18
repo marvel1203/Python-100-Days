@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     v-model="visible"
-    width="980px"
+    width="80%"
     class="code-runner-dialog"
     :close-on-click-modal="false"
     @close="handleClose"
@@ -9,10 +9,10 @@
     <template #header>
       <div class="dialog-header">
         <div class="header-text">
-          <h2>Python 代码实验室</h2>
+          <h2>{{ currentLang === 'python' ? 'Python 代码实验室' : 'JavaScript 代码实验室' }}</h2>
           <p>即时验证想法，洞察运行输出；适合课程示例与互动练习场景。</p>
         </div>
-        <el-tag type="info" effect="plain">Python 3.10 Runtime</el-tag>
+        <el-tag type="info" effect="plain">{{ currentLang === 'python' ? 'Python 3 Runtime' : 'JavaScript Runtime' }}</el-tag>
       </div>
     </template>
 
@@ -23,7 +23,7 @@
             <span class="dot dot-green"></span>
             <span class="dot dot-yellow"></span>
             <span class="dot dot-red"></span>
-            <strong>main.py</strong>
+            <strong>{{ currentLang === 'python' ? 'main.py' : 'main.js' }}</strong>
           </div>
           <div class="panel-actions">
             <el-button type="primary" :icon="VideoPlay" :loading="running" @click="runCode">
@@ -42,7 +42,7 @@
             type="textarea"
             :rows="18"
             resize="none"
-            placeholder="输入 Python 代码..."
+            :placeholder="currentLang === 'python' ? '输入 Python 代码...' : '输入 JavaScript 代码...'"
             class="code-editor"
           />
         </div>
@@ -143,6 +143,8 @@ print("平方和:", total)
 `
 
 const code = ref('')
+const originalCode = ref('')
+const currentLang = ref('python')
 
 const result = ref(null)
 const running = ref(false)
@@ -180,6 +182,8 @@ const handleKeydown = (event) => {
 onMounted(() => {
   window.addEventListener('keydown', handleKeydown)
   code.value = props.initialCode?.trim() ? props.initialCode : props.language === 'python' ? defaultCode : ''
+  originalCode.value = code.value
+  currentLang.value = props.language || 'python'
 })
 
 onBeforeUnmount(() => {
@@ -194,6 +198,31 @@ watch(
         const textarea = document.querySelector('.code-editor textarea')
         textarea?.focus()
       }, 200)
+      // 每次打开同步最新初始代码和语言
+      if (props.initialCode?.length) {
+        code.value = props.initialCode
+        originalCode.value = props.initialCode
+      }
+      currentLang.value = props.language || currentLang.value
+    }
+  }
+)
+
+watch(
+  () => props.initialCode,
+  (val) => {
+    if (typeof val === 'string') {
+      code.value = val
+      originalCode.value = val
+    }
+  }
+)
+
+watch(
+  () => props.language,
+  (val) => {
+    if (typeof val === 'string' && val) {
+      currentLang.value = val
     }
   }
 )
@@ -208,18 +237,26 @@ const runCode = async () => {
   result.value = null
 
   try {
-    if (props.language === 'python') {
+    const langToRun = (props.language && props.language !== 'text') ? props.language : detectLang(code.value)
+    currentLang.value = langToRun || 'python'
+    if (langToRun === 'python') {
       const { sanitized, tips } = sanitizePython(code.value)
       if (Array.isArray(tips) && tips.length) {
         ElMessage.warning('已自动处理受限语句: ' + tips.join('；'))
       }
-      const res = await axios.post('/api/exercises/exercises/run_code/', {
-        code: sanitized
-      })
+      const valid = await validatePython(sanitized)
+      if (!valid.ok) throw new Error(valid.message)
+      const res = await axios.post('/api/exercises/exercises/run_code/', { code: sanitized })
       result.value = res.data
       lastRunAt.value = new Date()
+    } else if (langToRun === 'javascript') {
+      const jsValid = validateJavascript(code.value)
+      if (!jsValid.ok) throw new Error(jsValid.message)
+      const jsRes = await runJavascriptInSandbox(code.value)
+      result.value = { success: jsRes.ok, output: jsRes.output, error: jsRes.error, execution_time: 0 }
+      lastRunAt.value = new Date()
     } else {
-      ElMessage.warning('当前仅支持 Python 代码运行')
+      ElMessage.warning(`当前仅支持 Python 代码运行（检测到: ${langToRun}）`)
     }
   } catch (error) {
     const msg = error.response?.data?.error || error.message || '运行失败'
@@ -237,6 +274,15 @@ const clearCode = () => {
   code.value = ''
   result.value = null
   lastRunAt.value = null
+}
+
+function detectLang(src) {
+  const s = src.trim()
+  const pyHints = [/^\s*def\s+\w+\(/m, /^\s*class\s+\w+\s*:/m, /print\s*\(/, /import\s+\w+/, /from\s+\w+\s+import/]
+  const jsHints = [/function\s+\w+\(/, /console\.log\(/, /=>/, /const\s+\w+\s*=\s*/, /let\s+\w+\s*=\s*/]
+  if (pyHints.some(r => r.test(s))) return 'python'
+  if (jsHints.some(r => r.test(s))) return 'javascript'
+  return 'text'
 }
 
 const handleClose = () => {
@@ -277,6 +323,63 @@ function sanitizePython(src) {
     }
   })
   return { sanitized: out, tips }
+}
+
+async function validatePython(src) {
+  try {
+    await axios.post('/api/exercises/exercises/validate_python/', { code: src })
+    return { ok: true }
+  } catch (err) {
+    const data = err.response?.data || {}
+    return { ok: false, message: data.message || 'Python 语法错误' }
+  }
+}
+
+function validateJavascript(src) {
+  try {
+    // eslint-disable-next-line no-new-func
+    new Function(src)
+    const forbidden = ['eval(', 'Function(', 'import ', 'XMLHttpRequest', 'fetch(', 'document.cookie']
+    const lowered = src
+    if (forbidden.some(k => lowered.includes(k))) {
+      return { ok: false, message: '包含受限语句或API' }
+    }
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, message: String(e.message || e) }
+  }
+}
+
+function runJavascriptInSandbox(src) {
+  return new Promise((resolve) => {
+    const iframe = document.createElement('iframe')
+    iframe.setAttribute('sandbox', 'allow-scripts')
+    iframe.style.display = 'none'
+    document.body.appendChild(iframe)
+
+    const handler = (ev) => {
+      if (ev.source !== iframe.contentWindow) return
+      window.removeEventListener('message', handler)
+      document.body.removeChild(iframe)
+      resolve(ev.data)
+    }
+    window.addEventListener('message', handler)
+
+    const doc = iframe.contentDocument || iframe.contentWindow.document
+    doc.open()
+    doc.write('<!doctype html><html><body></body></html>')
+    doc.close()
+
+    const script = doc.createElement('script')
+    script.textContent = `
+      var out = [];
+      var originalLog = console.log;
+      console.log = function(){ out.push(Array.prototype.slice.call(arguments).join(' ')); };
+      try { ${src} ; parent.postMessage({ ok:true, output: out.join('\\n') }, '*'); }
+      catch(e){ parent.postMessage({ ok:false, error: String(e) }, '*'); }
+    `
+    doc.body.appendChild(script)
+  })
 }
 </script>
 

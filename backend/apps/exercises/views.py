@@ -1,6 +1,8 @@
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.views import APIView
+import ast
 from rest_framework.permissions import IsAuthenticatedOrReadOnly, IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import F
@@ -94,6 +96,30 @@ class ExerciseViewSet(viewsets.ReadOnlyModelViewSet):
                 'success': False,
                 'error': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class ValidatePythonView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request):
+        code = request.data.get('code', '') or ''
+        try:
+            ast.parse(code)
+            return Response({'ok': True})
+        except SyntaxError as e:
+            return Response({
+                'ok': False,
+                'error_type': 'SyntaxError',
+                'message': str(e),
+                'line': getattr(e, 'lineno', None),
+                'col': getattr(e, 'offset', None)
+            }, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({
+                'ok': False,
+                'error_type': type(e).__name__,
+                'message': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
     
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def submit(self, request, slug=None):

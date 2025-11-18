@@ -12,9 +12,17 @@ import javascript from 'highlight.js/lib/languages/javascript'
 import 'highlight.js/styles/github-dark.css'
 import CodeRunnerDialog from './CodeRunnerDialog.vue'
 
-// 注册语言
 hljs.registerLanguage('python', python)
 hljs.registerLanguage('javascript', javascript)
+
+function guessLangFromCode(raw) {
+  const s = (raw || '').trim()
+  const pyHints = [/^\s*def\s+\w+\(/m, /^\s*class\s+\w+\s*:/m, /print\s*\(/, /import\s+\w+/, /from\s+\w+\s+import/]
+  const jsHints = [/function\s+\w+\(/, /console\.log\(/, /const\s+\w+\s*=\s*/, /let\s+\w+\s*=\s*/]
+  if (pyHints.some(r => r.test(s))) return 'python'
+  if (jsHints.some(r => r.test(s))) return 'javascript'
+  return 'text'
+}
 
 const props = defineProps({
   content: {
@@ -57,15 +65,19 @@ const bindRunButtons = () => {
   if (!container) return
   const buttons = container.querySelectorAll('.run-code-btn')
   buttons.forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      const target = e.currentTarget
-      const lang = target.getAttribute('data-lang') || 'text'
-      const codeEl = target.nextElementSibling?.querySelector('code')
-      const raw = codeEl ? codeEl.textContent || '' : ''
-      runnerCode.value = raw
-      runnerLang.value = lang === 'python' ? 'python' : lang
-      runnerVisible.value = true
-    })
+    if (btn.dataset.bound !== 'true') {
+      btn.addEventListener('click', (e) => {
+        const target = e.currentTarget
+        const lang = target.getAttribute('data-lang') || 'text'
+        const codeEl = target.nextElementSibling?.querySelector('code')
+        const raw = codeEl ? codeEl.textContent || '' : ''
+        runnerCode.value = raw
+        const guessed = lang === 'text' ? guessLangFromCode(raw) : lang
+        runnerLang.value = guessed
+        runnerVisible.value = true
+      })
+      btn.dataset.bound = 'true'
+    }
   })
 }
 
@@ -171,7 +183,7 @@ onUpdated(async () => {
 .markdown-body.markdown-viewer table tr:nth-child(2n) {
   background-color: #f6f8fa;
 }
-</style>
+
 .code-block-wrap {
   position: relative;
 }
@@ -192,3 +204,4 @@ onUpdated(async () => {
 .run-code-btn:hover {
   background: #0ea5e9;
 }
+</style>
