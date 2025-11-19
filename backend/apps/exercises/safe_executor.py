@@ -47,7 +47,7 @@ class CodeExecutor:
         try:
             self.set_memory_limit()
 
-            allowed_modules = {'math', 'random', 'datetime', 'statistics'}
+            allowed_modules = {'math', 'random', 'datetime', 'statistics', 're'}
 
             def safe_import(name, globals=None, locals=None, fromlist=(), level=0):
                 base = name.split('.')[0]
@@ -115,11 +115,18 @@ class CodeExecutor:
         forbidden_keywords = [
             'import os', 'import sys', 'import subprocess',
             'import socket', 'import requests',
-            'eval', 'exec', 'compile',
+            'eval', 'exec',
             'open(', 'file(', 'input(',
         ]
         lower = code.lower()
         for kw in forbidden_keywords:
             if kw in lower:
                 return False, f'禁止使用: {kw}'
+
+        # 特殊处理 compile 关键字，允许 re.compile 但禁止内置 compile 函数
+        import re
+        compile_pattern = r'(?<!\.)\bcompile\s*\('  # 匹配不是以 . 结尾的 compile(
+        if re.search(compile_pattern, code):
+            return False, '禁止使用: compile'
+
         return True, ''

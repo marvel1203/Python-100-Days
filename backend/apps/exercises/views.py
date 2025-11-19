@@ -75,7 +75,11 @@ class ExerciseViewSet(viewsets.ReadOnlyModelViewSet):
         try:
             # 验证代码安全性
             executor = CodeExecutor()
+            print(f"DEBUG: Using executor from module: {executor.__class__.__module__}")
+            print(f"DEBUG: Using executor class: {executor.__class__.__name__}")
+            print(f"DEBUG: Code to validate: {repr(code[:100])}...")
             is_valid, error_msg = executor.validate_code(code)
+            print(f"DEBUG: Validation result: {is_valid}, error: {error_msg}")
             if not is_valid:
                 return Response({
                     'success': False,

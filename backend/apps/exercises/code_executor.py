@@ -12,7 +12,7 @@ import importlib
 import json
 
 
-class CodeExecutor:
+class AdvancedCodeExecutor:
     """代码执行器"""
     
     def __init__(self, timeout=5, memory_limit=50*1024*1024):

@@ -327,7 +327,7 @@ function sanitizePython(src) {
 
 async function validatePython(src) {
   try {
-    await axios.post('/api/exercises/exercises/validate_python/', { code: src })
+    await axios.post('/api/exercises/validate_python/', { code: src })
     return { ok: true }
   } catch (err) {
     const data = err.response?.data || {}
