@@ -255,9 +255,31 @@ const handleSearchClear = () => {
   height: 42px;
   display: flex;
   align-items: center;
+  justify-content: center;
+  gap: 5px;
   font-weight: 500;
   color: #475569;
   transition: all 0.2s ease;
+}
+
+.nav-menu :deep(.el-menu-item .el-icon),
+.user-name .el-icon,
+.el-dropdown-menu__item .el-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.user-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.el-dropdown-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
 }
 
 .nav-menu :deep(.el-menu-item.is-active) {

@@ -195,10 +195,24 @@ watch(
 .lesson-meta span {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 5px;
+}
+
+.lesson-meta .el-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .stats-card h3 {
   margin-top: 0;
+}
+
+.stats-card .el-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
 }
 </style>

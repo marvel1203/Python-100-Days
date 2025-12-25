@@ -41,6 +41,17 @@
             登录
           </el-button>
         </el-form-item>
+
+        <el-form-item v-if="showQuickLogin">
+          <el-button
+            type="success"
+            :loading="loading"
+            @click="quickLoginAdmin"
+            style="width: 100%"
+          >
+            🚀 快捷登录管理员
+          </el-button>
+        </el-form-item>
         
         <el-form-item>
           <el-button
@@ -68,11 +79,28 @@ const userStore = useUserStore()
 
 const loginFormRef = ref()
 const loading = ref(false)
+const showQuickLogin = ref(import.meta.env.VITE_AUTO_LOGIN_ADMIN !== 'false')
 
 const loginForm = reactive({
   username: '',
   password: ''
 })
+
+const quickLoginAdmin = async () => {
+  loading.value = true
+  try {
+    await userStore.login({
+      username: import.meta.env.VITE_ADMIN_USERNAME || 'admin',
+      password: import.meta.env.VITE_ADMIN_PASSWORD || 'admin234'
+    })
+    ElMessage.success('管理员登录成功')
+    router.push('/')
+  } catch (error) {
+    ElMessage.error(error.message || '自动登录失败，请手动登录')
+  } finally {
+    loading.value = false
+  }
+}
 
 const rules = {
   username: [

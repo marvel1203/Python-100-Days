@@ -67,9 +67,18 @@ const toolbarStyle = computed(() => {
   const toolbarHeight = 40 // 工具栏高度
   const offset = 8 // 偏移距离
 
+  // position: fixed 是相对于视口的，所以不需要加 window.scrollY
+  // 但为了防止工具栏超出屏幕顶部，需要做边界检查
+  let top = rect.top - toolbarHeight - offset
+  
+  // 如果上方空间不足，显示在下方
+  if (top < 0) {
+    top = rect.bottom + offset
+  }
+
   return {
-    top: `${rect.top + window.scrollY - toolbarHeight - offset}px`,
-    left: `${rect.left + window.scrollX + rect.width / 2 - 120}px` // 120是工具栏宽度的一半
+    top: `${top}px`,
+    left: `${rect.left + rect.width / 2 - 120}px` // 120是工具栏宽度的一半
   }
 })
 
@@ -172,14 +181,13 @@ const handleSelection = () => {
   const range = selection.getRangeAt(0)
   const rect = range.getBoundingClientRect()
 
-  // 检查选区是否在有效的元素内
+  // 检查是否在工具栏内部
   const commonAncestor = range.commonAncestorContainer
   const validContainer = commonAncestor.nodeType === Node.ELEMENT_NODE
     ? commonAncestor
     : commonAncestor.parentNode
 
-  if (!validContainer || !validContainer.closest('.lesson-content, .markdown-body, .lesson-resources, .search-results, .github-link, .el-card__body, .el-descriptions, .el-table')) {
-    hideToolbar()
+  if (validContainer && validContainer.closest('.text-selection-toolbar')) {
     return
   }
 
@@ -191,11 +199,11 @@ const handleSelection = () => {
   }
 }
 
-const handleMouseDown = () => {
-  // 鼠标按下时隐藏工具栏，等待选择完成
-  setTimeout(() => {
-    handleSelection()
-  }, 100)
+const handleMouseDown = (event) => {
+  // 如果点击的是工具栏内部，不隐藏
+  if (event.target.closest('.text-selection-toolbar')) return
+  
+  hideToolbar()
 }
 
 const handleMouseUp = () => {
@@ -204,6 +212,31 @@ const handleMouseUp = () => {
     handleSelection()
   }, 50)
 }
+
+const handleKeyUp = (event) => {
+  // 支持 Shift + 箭头键的选择
+  if (event.shiftKey && (event.key.startsWith('Arrow') || event.key === 'Home' || event.key === 'End')) {
+    setTimeout(() => {
+      handleSelection()
+    }, 50)
+  }
+}
+
+// 简单的防抖函数
+const debounce = (fn, delay) => {
+  let timer = null
+  return (...args) => {
+    if (timer) clearTimeout(timer)
+    timer = setTimeout(() => {
+      fn(...args)
+    }, delay)
+  }
+}
+
+// 监听 selectionchange 事件，作为后备机制
+const handleSelectionChange = debounce(() => {
+  handleSelection()
+}, 500)
 
 const handleClick = (event) => {
   // 点击工具栏外部时隐藏
@@ -215,13 +248,18 @@ const handleClick = (event) => {
 // 生命周期
 onMounted(() => {
   document.addEventListener('mousedown', handleMouseDown)
-  document.addEventListener('mouseup', handleMouseUp)
+  // 使用 capture: true 确保捕获事件，防止被其他组件阻止冒泡
+  document.addEventListener('mouseup', handleMouseUp, true)
+  document.addEventListener('keyup', handleKeyUp)
+  document.addEventListener('selectionchange', handleSelectionChange)
   document.addEventListener('click', handleClick)
 })
 
 onUnmounted(() => {
   document.removeEventListener('mousedown', handleMouseDown)
-  document.removeEventListener('mouseup', handleMouseUp)
+  document.removeEventListener('mouseup', handleMouseUp, true)
+  document.removeEventListener('keyup', handleKeyUp)
+  document.removeEventListener('selectionchange', handleSelectionChange)
   document.removeEventListener('click', handleClick)
 })
 </script>
@@ -235,7 +273,7 @@ onUnmounted(() => {
   border: 1px solid #e4e7ed;
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  z-index: 1000;
+  z-index: 9999;
   padding: 8px;
   backdrop-filter: blur(10px);
   background-color: rgba(255, 255, 255, 0.95);

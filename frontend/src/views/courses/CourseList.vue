@@ -32,7 +32,54 @@
       </el-col>
     </el-row>
 
-    <el-row :gutter="20" v-loading="loading">
+    <el-row v-if="loading && courses.length === 0" :gutter="20">
+      <el-col :span="8" v-for="n in 6" :key="n">
+        <el-card class="course-card skeleton-card">
+          <el-skeleton animated>
+            <template #template>
+              <el-skeleton-item variant="image" style="width: 100%; height: 180px;" />
+              <div style="padding: 14px">
+                <el-skeleton-item variant="h3" style="width: 80%" />
+                <el-skeleton-item variant="text" style="margin-top: 10px" />
+                <el-skeleton-item variant="text" style="width: 60%" />
+                <div style="display: flex; gap: 10px; margin-top: 10px">
+                  <el-skeleton-item variant="tag" style="width: 40px" />
+                  <el-skeleton-item variant="text" style="width: 30px" />
+                </div>
+              </div>
+            </template>
+          </el-skeleton>
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <el-row v-else-if="error" :gutter="20">
+      <el-col :span="24">
+        <el-empty description="加载课程失败">
+          <template #image>
+            <el-icon size="80" color="#909399"><Warning /></el-icon>
+          </template>
+          <p class="error-message">{{ errorMessage }}</p>
+          <el-button type="primary" @click="loadCourses">
+            <el-icon><Refresh /></el-icon>
+            重新加载
+          </el-button>
+        </el-empty>
+      </el-col>
+    </el-row>
+
+    <el-row v-else-if="courses.length === 0" :gutter="20">
+      <el-col :span="24">
+        <el-empty description="暂无课程">
+          <template #image>
+            <el-icon size="80" color="#909399"><FolderOpened /></el-icon>
+          </template>
+          <p>暂无课程数据，请尝试其他筛选条件</p>
+        </el-empty>
+      </el-col>
+    </el-row>
+
+    <el-row v-else :gutter="20" v-loading="loading">
       <el-col :span="8" v-for="course in courses" :key="course.id">
         <el-card class="course-card" @click="$router.push(`/courses/${course.slug}`)">
           <img :src="course.cover_image || '/default-course.svg'" class="course-cover" />
@@ -50,7 +97,7 @@
       </el-col>
     </el-row>
 
-    <el-row>
+    <el-row v-if="courses.length > 0">
       <el-col :span="24" class="pagination">
         <el-pagination
           v-model:current-page="currentPage"
@@ -65,13 +112,15 @@
 </template>
 
 <script setup>
-import { ref, reactive, watch } from 'vue'
+import { ref, reactive, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { courseApi } from '@/api'
-import { View, Star } from '@element-plus/icons-vue'
+import { View, Star, Warning, Refresh, FolderOpened } from '@element-plus/icons-vue'
 
 const courses = ref([])
 const loading = ref(false)
+const error = ref(false)
+const errorMessage = ref('')
 const currentPage = ref(1)
 const pageSize = ref(9)
 const total = ref(0)
@@ -94,6 +143,9 @@ const getDifficultyLabel = (difficulty) => {
 
 const loadCourses = async () => {
   loading.value = true
+  error.value = false
+  errorMessage.value = ''
+  
   try {
     const params = {
       page: currentPage.value,
@@ -127,9 +179,16 @@ const loadCourses = async () => {
     total.value = totalCount
   } catch (error) {
     console.error('加载课程失败:', error)
+    error.value = true
+    errorMessage.value = error.response?.data?.detail || error.message || '未知错误'
+    courses.value = []
   } finally {
     loading.value = false
   }
+}
+
+const refreshCourses = () => {
+  loadCourses()
 }
 
 const extractQueryValue = (value) => {
@@ -234,6 +293,11 @@ watch(
   },
   { immediate: true }
 )
+
+onMounted(() => {
+  syncStateFromRoute()
+  loadCourses()
+})
 </script>
 
 <style scoped>
@@ -307,5 +371,15 @@ watch(
   display: flex;
   justify-content: center;
   margin-top: 30px;
+}
+
+.skeleton-card {
+  min-height: 350px;
+}
+
+.error-message {
+  color: #f56c6c;
+  margin: 10px 0;
+  font-size: 14px;
 }
 </style>

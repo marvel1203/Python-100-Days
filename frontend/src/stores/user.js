@@ -70,13 +70,17 @@ export const useUserStore = defineStore('user', () => {
       return
     }
 
+    if (!import.meta.env.VITE_AUTO_LOGIN_ADMIN || import.meta.env.VITE_AUTO_LOGIN_ADMIN === 'false') {
+      return
+    }
+
     if (autoLoginTask) {
       return autoLoginTask
     }
 
     const defaultCredentials = {
-      username: 'admin',
-      password: 'admin234',
+      username: import.meta.env.VITE_ADMIN_USERNAME || 'admin',
+      password: import.meta.env.VITE_ADMIN_PASSWORD || 'admin234',
     }
 
     autoLoginTask = (async () => {

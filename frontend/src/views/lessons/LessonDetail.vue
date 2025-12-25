@@ -484,6 +484,14 @@ mark {
   margin-top: 0;
 }
 
+.actions el-button,
+.code-link el-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
 @media screen and (max-width: 1200px) {
   .info-column {
     position: static;
