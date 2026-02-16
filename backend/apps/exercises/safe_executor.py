@@ -1,10 +1,15 @@
 import sys
 import io
-import signal
+import threading
 import traceback
 import resource
 from contextlib import contextmanager
 import importlib
+
+
+class TimeoutException(Exception):
+    """代码执行超时异常"""
+    pass
 
 
 class CodeExecutor:
@@ -14,14 +19,19 @@ class CodeExecutor:
 
     @contextmanager
     def time_limit(self, seconds):
-        def signal_handler(signum, frame):
-            raise TimeoutError(f"代码执行超时({seconds}秒)")
-        signal.signal(signal.SIGALRM, signal_handler)
-        signal.alarm(seconds)
+        """使用线程定时器实现超时控制,适用于子线程环境"""
+        timeout_occurred = threading.Event()
+
+        def timeout_handler():
+            timeout_occurred.set()
+            raise TimeoutException(f"代码执行超时({seconds}秒)")
+
+        timer = threading.Timer(seconds, timeout_handler)
+        timer.start()
         try:
             yield
         finally:
-            signal.alarm(0)
+            timer.cancel()
 
     def set_memory_limit(self):
         try:
@@ -55,8 +65,12 @@ class CodeExecutor:
                     raise ImportError(f'禁止导入模块: {base}')
                 return importlib.import_module(name)
 
+            # 获取原始的 __build_class__ (Python 3.11+)
+            build_class = __builtins__['__build_class__'] if isinstance(__builtins__, dict) else __builtins__.__build_class__
+
             restricted_globals = {
                 '__builtins__': {
+                    # 基础类型和转换
                     'print': print,
                     'range': range,
                     'len': len,
@@ -67,19 +81,64 @@ class CodeExecutor:
                     'dict': dict,
                     'tuple': tuple,
                     'set': set,
+                    'frozenset': frozenset,
+                    'bool': bool,
+                    'bytes': bytes,
+                    'bytearray': bytearray,
+                    'memoryview': memoryview,
+                    'type': type,
+                    'isinstance': isinstance,
+                    'issubclass': issubclass,
+                    'hasattr': hasattr,
+                    'getattr': getattr,
+                    'setattr': setattr,
+                    'delattr': delattr,
+                    'property': property,
+                    # 数学运算
                     'abs': abs,
                     'max': max,
                     'min': min,
                     'sum': sum,
+                    'pow': pow,
+                    'round': round,
+                    'divmod': divmod,
+                    'bin': bin,
+                    'oct': oct,
+                    'hex': hex,
+                    'ord': ord,
+                    'chr': chr,
+                    # 序列操作
                     'sorted': sorted,
+                    'reversed': reversed,
                     'enumerate': enumerate,
                     'zip': zip,
                     'map': map,
                     'filter': filter,
+                    'next': next,
+                    'iter': iter,
+                    'all': all,
+                    'any': any,
+                    # 对象操作
+                    'id': id,
+                    'hash': hash,
+                    'repr': repr,
+                    'format': format,
+                    'vars': vars,
+                    'dir': dir,
+                    'help': help,
+                    # 类的创建(必须)
+                    '__build_class__': build_class,
+                    # 其他
+                    'open': None,  # 禁用文件操作
                     '__import__': safe_import,
+                    '__name__': '__main__',
+                    '__doc__': None,
+                    '__package__': None,
+                    '__spec__': None,
                     'True': True,
                     'False': False,
                     'None': None,
+                    'Exception': Exception,
                 }
             }
 
@@ -96,7 +155,7 @@ class CodeExecutor:
                 result['status'] = 'passed'
                 result['output'] = output
 
-        except TimeoutError as e:
+        except TimeoutException as e:
             result['status'] = 'error'
             result['error_message'] = str(e)
         except MemoryError:
